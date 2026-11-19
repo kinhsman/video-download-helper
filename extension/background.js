@@ -737,7 +737,8 @@ async function checkForUpdate() {
   const url = updateUrlOverride || `https://raw.githubusercontent.com/${cfg.repo}/${cfg.branch}/version.json`;
   let state;
   try {
-    const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    // raw.githubusercontent.com keeps answers for about 5 minutes; a changing query string skips that cache.
+    const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!/^\d+(\.\d+){0,2}$/.test(String(data.version))) throw new Error('Unexpected version format');
