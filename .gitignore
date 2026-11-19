@@ -1,0 +1,8 @@
+key.pem
+key.pub.b64
+__pycache__/
+*.pyc
+.DS_Store
+tests/fixtures/
+tests/*.png
+host/run_host.sh

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Download Helper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Video Download Helper</h1>
+    <button id="detect" class="ghost" title="Reload this page and look for videos again">Force detect</button>
+  </header>
+
+  <section id="update" class="hint" hidden></section>
+
+  <section id="hint" class="hint" hidden></section>
+
+  <section id="found">
+    <h2>On this page</h2>
+    <div id="list"></div>
+  </section>
+
+  <section id="page-dl" hidden>
+    <h2>Whole page (yt-dlp)</h2>
+    <div class="row">
+      <select id="page-quality" aria-label="Quality">
+        <option value="best">Best quality</option>
+        <option value="1080">Up to 1080p</option>
+        <option value="720">Up to 720p</option>
+        <option value="audio">Audio only</option>
+      </select>
+      <button id="page-go">Download page</button>
+    </div>
+    <label class="check"><input type="checkbox" id="cookies"> Use my Chrome login (cookies)</label>
+  </section>
+
+  <section id="jobs-section" hidden>
+    <h2>Downloads <button id="clear" class="link">Clear</button></h2>
+    <div id="jobs"></div>
+  </section>
+
+  <section id="history-section" hidden>
+    <details>
+      <summary>Recent</summary>
+      <div id="history"></div>
+      <button id="clear-history" class="link">Clear history</button>
+    </details>
+  </section>
+
+  <footer>
+    <div id="helper"></div>
+    <div id="version"></div>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
