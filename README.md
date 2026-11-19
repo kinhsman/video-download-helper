@@ -15,7 +15,7 @@ That downloads the extension and the helper into `~/.video-download-helper`, reg
 2. Press Load unpacked and pick `~/.video-download-helper/extension`.
 3. Click the extension icon, press Enable helper, accept the prompt.
 
-Read `install.sh` first if you like. It only writes inside your home folder, and it asks before installing yt-dlp or ffmpeg with Homebrew.
+Read `install.sh` first if you like. It never asks questions. It writes inside your home folder, and installs yt-dlp and ffmpeg with Homebrew if you have it and they are missing. Set `VDH_NO_INSTALL=1` to stop it installing anything, or `VDH_SKIP_TOOLS=1` to skip yt-dlp and ffmpeg.
 
 ## Updates
 

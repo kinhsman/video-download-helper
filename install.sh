@@ -7,6 +7,8 @@
 #   1. Downloads the latest extension + helper into ~/.video-download-helper
 #   2. Registers the optional yt-dlp helper with Chrome (and other Chromium browsers)
 #   3. Opens chrome://extensions so you can Load unpacked (Chrome does not allow scripts to do that step)
+# Fully non-interactive. Missing yt-dlp / ffmpeg are installed with Homebrew if you have it.
+# Set VDH_NO_INSTALL=1 to forbid that, VDH_SKIP_TOOLS=1 to skip them.
 # Re-run it any time to update. Nothing outside your home folder is touched.
 set -euo pipefail
 

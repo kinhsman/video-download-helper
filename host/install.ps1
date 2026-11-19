@@ -1,5 +1,6 @@
 # Registers the optional yt-dlp helper with Chrome and other Chromium browsers (Windows).
-# Safe to re-run. Never installs anything without asking.
+# Safe to re-run. Fully non-interactive: it installs Python, yt-dlp and ffmpeg with winget when missing.
+#   set VDH_NO_INSTALL=1 to forbid installing anything, VDH_SKIP_TOOLS=1 to skip yt-dlp and ffmpeg
 #   -Refresh   non-interactive: only rewrite the launcher and browser registration
 #   -Python    full path of the python to use (the helper passes its own when it updates itself)
 param(
@@ -35,13 +36,28 @@ function Find-Python {
   return $null
 }
 
-function Test-Ask([string]$question) {
-  if ($Refresh -or $env:VDH_SKIP_TOOLS) { return $false }
-  if ($env:VDH_YES -eq '1') { return $true }
-  try {
-    $ans = Read-Host "$question [y/N]"
-    return ($ans -match '^[Yy]')
-  } catch { return $false }
+# After winget installs something, this window's PATH is stale. Re-read it from the registry.
+function Update-SessionPath {
+  $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+  $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+  $env:Path = (@($machine, $user, $env:Path) | Where-Object { $_ }) -join ';'
+}
+
+# Silent install through winget. Never prompts. Returns $true when winget reported success.
+function Install-WithWinget([string]$id, [string]$label, [switch]$UserScope) {
+  if ($env:VDH_NO_INSTALL) { Write-Host "  Skipping $label (VDH_NO_INSTALL is set)."; return $false }
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host "  winget is not available, so $label cannot be installed automatically."
+    return $false
+  }
+  Write-Host "Installing $label (silent)..."
+  $wingetArgs = @('install', '--id', $id, '-e', '--silent', '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity')
+  if ($UserScope) { $wingetArgs += @('--scope', 'user') }
+  & winget @wingetArgs | Out-Null
+  $ok = ($LASTEXITCODE -eq 0)
+  Update-SessionPath
+  if (-not $ok) { Write-Host "  winget could not install $label (exit code $LASTEXITCODE)." }
+  return $ok
 }
 
 function Find-Tool([string]$name) {
@@ -54,30 +70,20 @@ function Find-Tool([string]$name) {
 if (-not (Test-Python $Python)) { $Python = Find-Python }
 if (-not $Python -and -not $Refresh) {
   Write-Host 'Python 3 was not found (the helper needs it).'
-  if ((Get-Command winget -ErrorAction SilentlyContinue) -and (Test-Ask 'Install Python with winget now?')) {
-    winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements
-    $Python = Find-Python
-  }
+  [void](Install-WithWinget 'Python.Python.3.12' 'Python 3.12' -UserScope)
+  $Python = Find-Python
 }
 if (-not $Python) {
   throw 'Python 3 not found. Install it from https://www.python.org/downloads/ (tick "Add python.exe to PATH"), then run this again.'
 }
 
-# --- yt-dlp and ffmpeg (optional, for YouTube-style sites) ---
+# --- yt-dlp and ffmpeg (for YouTube-style sites). Failures here are not fatal. ---
 if (-not $Refresh -and -not $env:VDH_SKIP_TOOLS) {
   $tools = @(@{ cmd = 'yt-dlp'; id = 'yt-dlp.yt-dlp' }, @{ cmd = 'ffmpeg'; id = 'Gyan.FFmpeg' })
   foreach ($t in $tools) {
     if (Find-Tool $t.cmd) { continue }
     Write-Host "$($t.cmd) is not installed (needed for YouTube-style sites)."
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-      if (Test-Ask "Install $($t.cmd) with winget now?") {
-        winget install --id $t.id -e --accept-source-agreements --accept-package-agreements
-      } else {
-        Write-Host "  Skipped. Later: winget install --id $($t.id)"
-      }
-    } else {
-      Write-Host "  Install $($t.cmd) and make sure it is on your PATH."
-    }
+    [void](Install-WithWinget $t.id $t.cmd)
   }
 }
 

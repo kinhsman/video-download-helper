@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Registers the optional yt-dlp helper with Chrome and other Chromium browsers (macOS).
-# Safe to re-run. Never installs anything without asking.
+# Safe to re-run. Fully non-interactive: installs yt-dlp and ffmpeg with Homebrew when missing.
+#   VDH_NO_INSTALL=1 forbids installing anything, VDH_SKIP_TOOLS=1 skips yt-dlp and ffmpeg
 #   --refresh   non-interactive: only rewrite the launcher and browser registration
 set -euo pipefail
 
@@ -13,33 +14,23 @@ REFRESH=0
 [ "${1:-}" = "--refresh" ] && REFRESH=1
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-# Prompts must read from the terminal, because this script may itself be fed through a pipe.
-ask() {
-  local ans=""
-  if [ "$REFRESH" = 0 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
-    read -r -p "$1 [y/N] " ans < /dev/tty || true
-  fi
-  [[ "$ans" =~ ^[Yy]$ ]]
-}
-
 PY="$(command -v python3 || true)"
 if [ -z "$PY" ] || ! "$PY" -c 'import sys' >/dev/null 2>&1; then
   echo "python3 not found or not working. Install it first (brew install python)."
   exit 1
 fi
 
-if [ "$REFRESH" = 0 ]; then
+if [ "$REFRESH" = 0 ] && [ -z "${VDH_SKIP_TOOLS:-}" ]; then
   for tool in yt-dlp ffmpeg; do
     command -v "$tool" >/dev/null 2>&1 && continue
     echo "$tool is not installed (needed for YouTube-style sites)."
-    if command -v brew >/dev/null 2>&1; then
-      if [ "${VDH_YES:-0}" = 1 ] || ask "Install $tool with Homebrew now?"; then
-        brew install "$tool"
-      else
-        echo "  Skipped. Later: brew install $tool"
-      fi
+    if [ -n "${VDH_NO_INSTALL:-}" ]; then
+      echo "  Skipping (VDH_NO_INSTALL is set). Later: brew install $tool"
+    elif command -v brew >/dev/null 2>&1; then
+      echo "  Installing $tool with Homebrew..."
+      HOMEBREW_NO_ENV_HINTS=1 brew install "$tool" || echo "  Could not install $tool. Later: brew install $tool"
     else
-      echo "  Install Homebrew from https://brew.sh, then run: brew install $tool"
+      echo "  Homebrew is not installed. Get it from https://brew.sh, then run: brew install $tool"
     fi
   done
 fi

@@ -6,7 +6,9 @@
 #   1. Downloads the latest extension + helper into %USERPROFILE%\.video-download-helper
 #   2. Registers the optional yt-dlp helper with Chrome (and Edge, Brave, Chromium if present)
 #   3. Opens chrome://extensions so you can Load unpacked (Chrome does not allow scripts to do that step)
-# Re-run it any time to update. Nothing outside your user profile is touched, no admin needed.
+# Fully non-interactive. If Python, yt-dlp or ffmpeg are missing it installs them silently with winget
+# (per user, no admin). Set VDH_NO_INSTALL=1 to forbid that, VDH_SKIP_TOOLS=1 to skip yt-dlp and ffmpeg.
+# Re-run it any time to update. Nothing outside your user profile is touched.
 
 function Install-VideoDownloadHelper {
   $ErrorActionPreference = 'Stop'
