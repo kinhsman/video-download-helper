@@ -1,4 +1,4 @@
 {
-  "version": "0.3.0",
-  "notes": "Windows support: one-line PowerShell install."
+  "version": "0.3.1",
+  "notes": "Popup fixes: expandable titles, clearer cards."
 }

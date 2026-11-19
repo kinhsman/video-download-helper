@@ -54,10 +54,16 @@ function Install-WithWinget([string]$id, [string]$label, [switch]$UserScope) {
   $wingetArgs = @('install', '--id', $id, '-e', '--silent', '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity')
   if ($UserScope) { $wingetArgs += @('--scope', 'user') }
   & winget @wingetArgs | Out-Null
-  $ok = ($LASTEXITCODE -eq 0)
+  $code = $LASTEXITCODE
   Update-SessionPath
-  if (-not $ok) { Write-Host "  winget could not install $label (exit code $LASTEXITCODE)." }
-  return $ok
+  # 0x8A15002B (no newer version) and 0x8A150061 (already installed) both mean it is there already.
+  if ($code -eq 0) { return $true }
+  if ($code -eq -1978335189 -or $code -eq -1978335135) {
+    Write-Host "  $label is already installed."
+    return $true
+  }
+  Write-Host "  winget could not install $label (exit code $code)."
+  return $false
 }
 
 function Find-Tool([string]$name) {
@@ -67,6 +73,8 @@ function Find-Tool([string]$name) {
 }
 
 # --- python ---
+# A window opened before Python was installed has a stale PATH, so re-read it first.
+Update-SessionPath
 if (-not (Test-Python $Python)) { $Python = Find-Python }
 if (-not $Python -and -not $Refresh) {
   Write-Host 'Python 3 was not found (the helper needs it).'

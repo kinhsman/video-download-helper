@@ -42,12 +42,24 @@ jobs:
           pip install yt-dlp
           choco install ffmpeg -y --no-progress
 
-      - name: Helper downloads with yt-dlp
+      - name: yt-dlp directly (debug)
         shell: bash
-        timeout-minutes: 6
+        timeout-minutes: 3
         run: |
           bash tests/make_fixtures.sh
           nohup python -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures > server.log 2>&1 &
+          sleep 3
+          mkdir -p dbg && cd dbg
+          timeout 90 yt-dlp -v --no-playlist -o "x.%(ext)s" http://127.0.0.1:8791/sample.mp4 || echo "yt-dlp exit $?"
+          ls -la
+
+      - name: Helper downloads with yt-dlp
+        shell: bash
+        timeout-minutes: 4
+        env:
+          VDH_DEBUG: '1'
+        run: |
+          nohup python -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures > server2.log 2>&1 &
           sleep 3
           curl -sI http://127.0.0.1:8791/sample.mp4 | head -1
           python -u tests/test_host.py

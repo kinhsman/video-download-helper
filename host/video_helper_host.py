@@ -61,6 +61,12 @@ os.environ["PATH"] = os.pathsep.join(_extra + [os.environ.get("PATH", "")])
 _write_lock = threading.Lock()
 
 
+def dbg(*parts):
+    """Debug lines go to stderr (browsers ignore it). Turn on with VDH_DEBUG=1."""
+    if os.environ.get("VDH_DEBUG"):
+        print("[host]", *parts, file=sys.stderr, flush=True)
+
+
 def send(msg):
     data = json.dumps(msg).encode("utf-8")
     with _write_lock:
@@ -179,12 +185,14 @@ class Download:
         existed = False
         try:
             cmd = build_command(self.req, path_file)
+            dbg("running", cmd)
             self.proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                 bufsize=1, creationflags=NOWINDOW,
             )
             for line in self.proc.stdout:
                 line = line.strip()
+                dbg("yt-dlp:", line[:200])
                 if line.startswith("PROGRESS|"):
                     _, pct, speed, eta = (line.split("|") + ["", "", ""])[:4]
                     m = re.search(r"([\d.]+)", pct)
@@ -199,6 +207,7 @@ class Download:
                 elif "has already been downloaded" in line:
                     existed = True
             code = self.proc.wait()
+            dbg("yt-dlp exited", code)
             if self.canceled:
                 return
             out_path = ""
