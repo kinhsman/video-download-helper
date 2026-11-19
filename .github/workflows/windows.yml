@@ -8,6 +8,7 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,6 +46,7 @@ jobs:
         shell: bash
         run: |
           bash tests/make_fixtures.sh
-          python -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures &
+          nohup python -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures > server.log 2>&1 &
           sleep 3
-          python tests/test_host.py
+          curl -sI http://127.0.0.1:8791/sample.mp4 | head -1
+          timeout 600 python tests/test_host.py
