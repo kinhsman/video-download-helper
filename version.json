@@ -1,4 +1,4 @@
 {
-  "version": "0.3.6",
-  "notes": "Update result now shows how to update, right where you look. Hides Dailymotion stream chunks."
+  "version": "0.3.7",
+  "notes": "Fixes a stale \"update available\" banner after updating."
 }

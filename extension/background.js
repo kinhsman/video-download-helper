@@ -663,7 +663,9 @@ async function handle(msg, sender) {
       return helperState();
     case 'update-state': {
       const { update } = await chrome.storage.local.get('update');
-      return update || { current: chrome.runtime.getManifest().version, available: false };
+      const current = chrome.runtime.getManifest().version;
+      // The stored answer may be from before this copy was updated, so judge it against the version running now.
+      return update ? { ...update, current, available: !!update.latest && isNewer(update.latest, current) } : { current, available: false };
     }
     case 'check-update':
       return checkForUpdate();
@@ -759,7 +761,10 @@ async function checkForUpdate() {
 function scheduleUpdateChecks() {
   chrome.alarms.create(UPDATE_ALARM, { delayInMinutes: 1, periodInMinutes: 720 });
 }
-chrome.runtime.onInstalled.addListener(scheduleUpdateChecks);
+chrome.runtime.onInstalled.addListener(() => {
+  scheduleUpdateChecks();
+  checkForUpdate().catch(() => {});
+});
 chrome.runtime.onStartup.addListener(scheduleUpdateChecks);
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === UPDATE_ALARM) checkForUpdate();

@@ -227,6 +227,11 @@ try {
   await setOverride(`${BASE}/same-version.json`);
   up = await call({ type: 'check-update' });
   check('same version means no update', up.available === false, JSON.stringify(up));
+  // a result saved before this copy was updated must not show a stale "update available"
+  await evalIn(cdp, popupId, `chrome.storage.local.set({ update: { current: '0.0.1', latest: '0.0.2', available: true, notes: 'old', checkedAt: Date.now() } })`);
+  const stale = await call({ type: 'update-state' });
+  check('a stale saved update result is judged against the running version', stale.available === false, JSON.stringify(stale));
+
   // the button itself: clicking it must show a result the user can see
   await setOverride(`${BASE}/same-version.json`);
   const uiText = await evalIn(cdp, popupId, `(async () => {

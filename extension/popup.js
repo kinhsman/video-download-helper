@@ -271,11 +271,16 @@ function versionIsNewer(a, b) {
   return false;
 }
 
+// Judged against the version running now, so a result saved before an update cannot show a stale banner.
+function updateAvailable() {
+  return !!update?.latest && versionIsNewer(update.latest, chrome.runtime.getManifest().version);
+}
+
 function updateStatusText() {
   if (!update?.checkedAt) return '';
   if (update.error) return `Could not check (${update.error}).`;
   const published = `Latest published: ${update.latest}. Checked ${ago(update.checkedAt)}.`;
-  if (update.available) return `Update found. ${published}`;
+  if (updateAvailable()) return `Update found. ${published}`;
   if (versionIsNewer(update.current, update.latest)) return `Up to date (this copy is newer than the published ${update.latest}). Checked ${ago(update.checkedAt)}.`;
   return `Up to date. ${published}`;
 }
@@ -334,7 +339,7 @@ function renderUpdate(justChecked = false) {
   };
 
   $('version').replaceChildren(`Version ${current} `, checkBtn, status);
-  if (!update?.available) {
+  if (!updateAvailable()) {
     box.hidden = true;
     return;
   }
