@@ -280,7 +280,7 @@ function updateStatusText() {
   return `Up to date. ${published}`;
 }
 
-function renderUpdate() {
+function renderUpdate(justChecked = false) {
   const box = $('update');
   box.replaceChildren();
   const current = chrome.runtime.getManifest().version;
@@ -297,42 +297,52 @@ function renderUpdate() {
       } catch (err) {
         update = { ...(update || {}), current, error: err.message, checkedAt: Date.now() };
       }
-      renderUpdate();
+      renderUpdate(true);
     },
   }, 'Check for updates');
+  // What to do about an update. Shown in the blue box at the top AND under the version line,
+  // because the popup may be scrolled down when the user presses Check for updates.
+  const updateActions = () => {
+    if (helper.state === 'ok' && helper.installed) {
+      const msg = el('div', { class: 'detail' });
+      return el('div', {},
+        el('div', { class: 'row' }, el('button', {
+          onclick: async (e) => {
+            e.target.disabled = true;
+            e.target.textContent = 'Updating...';
+            try {
+              await ask({ type: 'apply-update' });
+              e.target.textContent = 'Updated, reloading...';
+              setTimeout(() => chrome.runtime.reload(), 700);
+            } catch (err) {
+              e.target.disabled = false;
+              e.target.textContent = 'Update now';
+              msg.textContent = err.message;
+            }
+          },
+        }, 'Update now')),
+        msg,
+      );
+    }
+    if (helper.state === 'ok') {
+      return el('p', {}, 'This is a development copy, so it cannot update itself. Update it with git pull, then reload the extension.');
+    }
+    return el('div', {},
+      el('p', {}, `Run this in ${isWindows ? 'PowerShell' : 'Terminal'}, then press the reload arrow on this extension in chrome://extensions:`),
+      el('code', {}, installCmd()),
+    );
+  };
+
   $('version').replaceChildren(`Version ${current} `, checkBtn, status);
   if (!update?.available) {
     box.hidden = true;
     return;
   }
+  const headline = `Update available: version ${update.latest} (you have ${current}).${update.notes ? ' ' + update.notes : ''}`;
+  $('version').append(el('div', { class: 'update-inline' }, el('p', {}, headline), updateActions()));
   box.hidden = false;
-  box.append(el('p', {}, `Update available: version ${update.latest} (you have ${current}).${update.notes ? ' ' + update.notes : ''}`));
-  if (helper.state === 'ok' && helper.installed) {
-    const status = el('div', { class: 'detail' });
-    box.append(
-      el('div', { class: 'row' }, el('button', {
-        onclick: async (e) => {
-          e.target.disabled = true;
-          e.target.textContent = 'Updating...';
-          try {
-            await ask({ type: 'apply-update' });
-            e.target.textContent = 'Updated, reloading...';
-            setTimeout(() => chrome.runtime.reload(), 700);
-          } catch (err) {
-            e.target.disabled = false;
-            e.target.textContent = 'Update now';
-            status.textContent = err.message;
-          }
-        },
-      }, 'Update now')),
-      status,
-    );
-  } else {
-    box.append(
-      el('p', {}, `Run this in ${isWindows ? 'PowerShell' : 'Terminal'}, then press the reload arrow on this extension in chrome://extensions:`),
-      el('code', {}, installCmd()),
-    );
-  }
+  box.append(el('p', {}, headline), updateActions());
+  if (justChecked) box.scrollIntoView({ block: 'start' });
 }
 
 function renderHelper() {

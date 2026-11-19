@@ -3,7 +3,7 @@ import { parsePlaylist, variantLabel } from './lib/hls.js';
 const HELPER_HOST = 'com.sang.video_helper';
 const MIN_FILE_BYTES = 1024 * 1024; // smaller network files are almost always stream chunks, thumbnails or ads
 const DRM_HINT = /(^|[\/_.-])drm([\/_.-]|$)/i;
-const SEGMENT_HINT = /(^|[\/_.-])(seg(ment)?|chunk|frag(ment)?|init|part)[-_]?\d*\.(mp4|m4s|m4v|webm)$|\/\d+\.(mp4|m4v|webm)$/i;
+const SEGMENT_HINT = /(^|[\/_.-])(seg(ment)?|chunk|frag(ment)?|init|part)[-_]?\d*\.(mp4|m4s|m4v|webm|pmp4)$|\/\d+\.(mp4|m4v|webm|pmp4|m4s)$/i;
 const MAX_BROWSER_HLS_BYTES = 1.5 * 1024 * 1024 * 1024;
 const SAVE_DIR = 'VideoHelper';
 

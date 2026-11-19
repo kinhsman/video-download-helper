@@ -1,4 +1,4 @@
 {
-  "version": "0.3.5",
-  "notes": "Cards say downloads via helper once the helper is set up."
+  "version": "0.3.6",
+  "notes": "Update result now shows how to update, right where you look. Hides Dailymotion stream chunks."
 }

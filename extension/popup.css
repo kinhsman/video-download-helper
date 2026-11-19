@@ -88,3 +88,7 @@ summary { cursor: pointer; color: var(--muted); }
 .title-wrap .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .title-wrap .clamp:not(.x) { overflow: hidden; }
 .more { display: block; margin: 2px 0 0; font-size: 12px; }
+
+.update-inline { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; }
+.update-inline p { margin: 0 0 6px; }
+.update-inline code { display: block; padding: 6px 8px; background: var(--surface); border-radius: 6px; user-select: all; word-break: break-all; }

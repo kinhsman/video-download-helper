@@ -240,6 +240,15 @@ try {
     await new Promise(r => setTimeout(r, 1500));
     return document.getElementById('version').innerText;
   })()`);
+  // when an update exists, the way to apply it must sit right under the version line, not only at the top
+  await setOverride(`${BASE}/newer-version.json`);
+  const withUpdate = await evalIn(cdp, popupId, `(async () => {
+    document.querySelector('#version button').click();
+    await new Promise(r => setTimeout(r, 1500));
+    return document.getElementById('version').innerText;
+  })()`);
+  check('Check for updates with a newer version shows what to do right there', /Update available: version 99\.0\.0/.test(withUpdate) && /(Update now|development copy|install\.sh|install\.ps1)/.test(withUpdate), JSON.stringify(withUpdate));
+  await setOverride(`${BASE}/same-version.json`);
   check('Check for updates button shows a visible result', /Checked just now/.test(clicked) && /Latest published/.test(clicked), JSON.stringify(clicked));
   await setOverride(`${BASE}/newer-version.json`);
   await call({ type: 'check-update' });
