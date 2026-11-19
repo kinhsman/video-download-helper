@@ -62,6 +62,40 @@ function chip(text, kind = '') {
   return el('span', { class: `chip ${kind}` }, text);
 }
 
+// Long titles show two lines and a toggle that opens the whole title. Open state survives re-renders.
+const expandedTitles = new Set();
+function titleBlock(text, key, className) {
+  const t = el('div', { class: `${className} clamp`, title: text }, text);
+  const toggle = el('button', { class: 'link more', hidden: true }, 'Show full title');
+  const apply = () => {
+    const open = expandedTitles.has(key);
+    t.classList.toggle('clamp', !open);
+    toggle.textContent = open ? 'Show less' : 'Show full title';
+  };
+  toggle.addEventListener('click', () => {
+    if (expandedTitles.has(key)) expandedTitles.delete(key);
+    else expandedTitles.add(key);
+    apply();
+  });
+  apply();
+  // offer the toggle only when the text really is cut off
+  requestAnimationFrame(() => {
+    if (expandedTitles.has(key) || t.scrollHeight - t.clientHeight > 6) toggle.hidden = false;
+  });
+  return el('div', { class: 'title-wrap' }, t, toggle);
+}
+
+// "manifest.googlevideo.com · hls_playlist" says more than a 300 character address.
+function shortSource(url) {
+  try {
+    const u = new URL(url);
+    const tail = u.pathname.split('/').filter(Boolean).pop() || '';
+    return tail ? `${u.hostname} · ${tail}` : u.hostname;
+  } catch {
+    return url;
+  }
+}
+
 function renderItems() {
   const box = $('list');
   box.replaceChildren();
@@ -84,22 +118,20 @@ function renderItems() {
       chips.push(chip('HLS stream'));
       if (!hls) chips.push(chip('checking...'));
       else {
-        if (hls.duration) chips.push(chip(fmtDur(hls.duration)));
+        if (hls.duration && !hls.live) chips.push(chip(fmtDur(hls.duration)));
         if (hls.live) chips.push(chip('live', 'warn'));
         if (hls.protected) chips.push(chip(`protected: ${hls.protected}`, 'bad'));
         if (hls.error && !hls.variants.length) chips.push(chip('could not read playlist', 'warn'));
+        if (it.needsHelper && !hls.live) chips.push(chip('needs helper', 'warn'));
         if (hls.variants.length) {
           select = el(
             'select',
             { 'aria-label': 'Quality' },
             hls.variants.map((v) => {
               const est = v.estBytes ? ` · ~${fmtBytes(v.estBytes)}` : '';
-              const sep = v.separateAudio ? ' · needs helper' : '';
-              return el('option', { value: v.url }, `${v.label}${est}${sep}`);
+              return el('option', { value: v.url }, `${v.label}${est}`);
             }),
           );
-        } else if (hls.duration) {
-          // single media playlist: no estimate without bandwidth
         }
       }
     } else if (it.kind === 'dash') {
@@ -109,9 +141,18 @@ function renderItems() {
       else chips.push(chip('needs helper', 'warn'));
     }
 
-    const blocked = it.protectedReason || (it.kind === 'dash' && helper.state !== 'ok');
+    // Does the chosen quality need the helper, and is the helper missing?
+    const variantNeedsHelper = () => it.kind === 'dash' || !!hls?.live || !!hls?.variants.find((v) => v.url === select?.value)?.separateAudio;
+    const note = el('div', { class: 'note' });
+    const unreadable = it.kind === 'hls' && hls && hls.error && !hls.variants.length && !hls.duration;
+    const refreshBlocked = () => {
+      const missing = !it.protectedReason && variantNeedsHelper() && helper.state !== 'ok';
+      btn.disabled = !!it.protectedReason || missing || unreadable;
+      note.textContent = unreadable ? 'This playlist could not be read. Try Force detect.' : missing ? 'This one needs the helper app (see the bottom of this window).' : '';
+      note.hidden = !(missing || unreadable);
+    };
     const btn = el('button', {
-      disabled: !!blocked,
+      disabled: true,
       onclick: async (e) => {
         e.target.disabled = true;
         try {
@@ -127,12 +168,15 @@ function renderItems() {
     const name = it.title || it.pageUrl || 'Video';
     box.append(
       el('div', { class: 'card' },
-        el('div', { class: 'name', title: name }, name),
-        el('div', { class: 'url', title: it.url }, it.url),
+        titleBlock(name, `card:${it.key}`, 'name'),
+        el('div', { class: 'url', title: it.url }, shortSource(it.url)),
         el('div', { class: 'chips' }, chips),
         el('div', { class: 'row' }, select, !select && el('span', { style: 'flex:1' }), btn),
+        note,
       ),
     );
+    select?.addEventListener('change', refreshBlocked);
+    refreshBlocked();
   }
   appendMinorToggle();
 }
@@ -154,7 +198,7 @@ function jobRow(j, withProgress) {
   const label = { running: `${pct}%`, done: 'Done', error: 'Failed', canceled: 'Canceled' }[j.status] || j.status;
   return el('div', { class: `job ${j.status}`, 'data-id': j.id },
     el('div', { class: 'top' },
-      el('div', { class: 'title', title: j.title }, j.title),
+      titleBlock(j.title, `job:${j.id}`, 'title'),
       j.status === 'running'
         ? el('button', { class: 'link', onclick: () => ask({ type: 'cancel', jobId: j.id }) }, 'Cancel')
         : el('span', { class: 'detail' }, label),
@@ -194,7 +238,7 @@ async function renderHistory() {
   $('history-section').hidden = !history.length;
   $('history').replaceChildren(
     ...history.slice(0, 15).map((h) => el('div', { class: `job ${h.status}` },
-      el('div', { class: 'top' }, el('div', { class: 'title', title: h.filename || h.title }, h.title), el('span', { class: 'detail' }, h.status === 'done' ? 'Done' : 'Failed')),
+      el('div', { class: 'top' }, titleBlock(h.title, `hist:${h.id}`, 'title'), el('span', { class: 'detail' }, h.status === 'done' ? 'Done' : 'Failed')),
       el('div', { class: 'detail' }, h.status === 'done' ? h.filename.split('/').pop() : h.detail),
     )),
   );

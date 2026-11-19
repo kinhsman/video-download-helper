@@ -304,14 +304,14 @@ function visibleItems(tabId) {
   const hidden = new Set();
   for (const it of items) {
     if (it.hls?.isMaster) {
-      for (const v of it.hls.variants) hidden.add(v.url);
-      for (const a of it.hls.audio) hidden.add(a.uri);
+      for (const v of it.hls.variants) hidden.add(normUrl(v.url));
+      for (const a of it.hls.audio) hidden.add(normUrl(a.uri));
     }
   }
   // Picture and sound files that belong to a DASH manifest are parts of one stream, show only the manifest.
   const dashTracks = new Set(items.flatMap((it) => it.dash?.tracks || []));
   return items
-    .filter((it) => !hidden.has(it.url))
+    .filter((it) => !hidden.has(normUrl(it.url)))
     .filter((it) => !(it.kind === 'file' && dashTracks.has(normUrl(it.url))))
     .filter((it) => !(it.kind === 'file' && it.source !== 'dom' && isSegmentLike(it)))
     .sort((a, b) => b.time - a.time);
@@ -340,7 +340,8 @@ function annotate(items) {
     let minor = null;
     if (d > 0 && d < MINOR_MAX_SECONDS && longest >= MAIN_MIN_SECONDS) minor = 'short clip';
     else if (it.kind === 'file' && it.size > 0 && maxFile >= MAIN_MIN_BYTES && it.size < maxFile * MINOR_SIZE_RATIO) minor = 'much smaller than the main video';
-    return { ...it, protectedReason: protectedReasonOf(it), minor };
+    const needsHelper = it.kind === 'dash' || !!it.hls?.live || !!(it.hls?.variants?.length && it.hls.variants.every((v) => v.separateAudio));
+    return { ...it, protectedReason: protectedReasonOf(it), minor, needsHelper };
   });
 }
 
@@ -646,7 +647,7 @@ async function handle(msg, sender) {
       const items = annotate(visibleItems(msg.tabId));
       const main = items.filter((it) => !it.minor);
       // Sites that stream with DASH keep picture and sound in separate files.
-      return { items, streamSite: main.some((it) => it.kind === 'dash'), protectedSite: main.some((it) => it.protectedReason) };
+      return { items, streamSite: main.some((it) => it.needsHelper), protectedSite: main.some((it) => it.protectedReason) };
     }
     case 'helper-state':
       return helperState();

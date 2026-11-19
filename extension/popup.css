@@ -52,7 +52,7 @@ select { font: inherit; color: var(--text); background: var(--surface); border: 
 .row button { flex: none; }
 .check { display: block; margin-top: 6px; color: var(--muted); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
-.card .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .name { font-weight: 600; }
 .card .url { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
 .chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
@@ -77,3 +77,14 @@ summary { cursor: pointer; color: var(--muted); }
 .hint code { display: block; margin-top: 6px; padding: 6px 8px; background: var(--bg); border-radius: 6px; user-select: all; word-break: break-all; }
 .hint .row { margin-top: 2px; }
 #version { margin-top: 4px; }
+
+.note { margin-top: 6px; font-size: 12px; color: var(--warn); }
+#helper { margin-bottom: 6px; line-height: 1.5; }
+.card .row select { text-overflow: ellipsis; }
+
+/* titles: two lines, then a toggle for the rest */
+.title-wrap { min-width: 0; flex: 1; }
+.name, .job .title { overflow-wrap: anywhere; white-space: normal; text-overflow: clip; }
+.title-wrap .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.title-wrap .clamp:not(.x) { overflow: hidden; }
+.more { display: block; margin: 2px 0 0; font-size: 12px; }

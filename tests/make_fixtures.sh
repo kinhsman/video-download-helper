@@ -51,6 +51,42 @@ head -c 25000000 /dev/urandom > big.mp4
 echo '{"version":"99.0.0","notes":"Test update."}' > newer-version.json
 echo "{\"version\":\"$("${PYBIN:-python3}" -c 'import json;print(json.load(open("../../extension/manifest.json"))["version"])')\",\"notes\":\"\"}" > same-version.json
 
+# QA page: awkward cases for the popup (long non-Latin title, separate-audio streams, live, unreadable playlist)
+mkdir -p qa
+"$PYBIN" - <<'PY'
+def media(name, live=False, n=160):
+    body = "#EXTM3U\n#EXT-X-TARGETDURATION:10\n" + "".join(f"#EXTINF:10,\nseg{i}.ts\n" for i in range(n))
+    if not live:
+        body += "#EXT-X-ENDLIST\n"
+    open(f"qa/{name}", "w").write(body)
+media("v1080.m3u8"); media("v720.m3u8"); media("audio.m3u8"); media("live.m3u8", live=True, n=6)
+media("mixed_a.m3u8"); media("mixed_b.m3u8")
+open("qa/master_sep.m3u8", "w").write('''#EXTM3U
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",DEFAULT=YES,URI="audio.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=3700000,RESOLUTION=1920x1080,AUDIO="aud"
+v1080.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1800000,RESOLUTION=1280x720,AUDIO="aud"
+v720.m3u8
+''')
+open("qa/master_mixed.m3u8", "w").write('''#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720,CODECS="avc1.4d401f,mp4a.40.2"
+mixed_a.m3u8?token=abc
+#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=854x480,CODECS="avc1.4d401e,mp4a.40.2"
+mixed_b.m3u8
+''')
+open("qa/garbage.m3u8", "w").write("<html>this is not a playlist</html>")
+open("qa.html", "w", encoding="utf-8").write('''<!doctype html>
+<meta charset="utf-8">
+<title>Is QQQ Repeating 2018? 5 AI Stocks Showing Strength (Options With Ryan) ปาฏิหาริย์ข้ามกาลเวลา</title>
+<h1>VDH QA page</h1>
+<script>
+  for (const f of ['master_sep', 'master_mixed', 'live', 'garbage']) fetch('qa/' + f + '.m3u8').then(r => r.text());
+  // a variant requested with a different query string than the master lists
+  fetch('qa/mixed_a.m3u8?token=zzz').then(r => r.text());
+</script>
+''')
+PY
+
 cat > plain.html <<'EOF'
 <!doctype html>
 <title>VDH plain page</title>
