@@ -730,17 +730,30 @@ function isNewer(a, b) {
   return false;
 }
 
+async function fetchJson(url, headers = {}) {
+  const res = await fetch(url, { cache: 'no-store', headers, signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// The GitHub API answers within about a minute of a release. raw.githubusercontent.com can lag by 5 minutes and
+// ignores query strings, so it is only the fallback (the API allows 60 requests an hour per address).
+async function fetchPublishedVersion(cfg, override) {
+  if (override) return fetchJson(override);
+  try {
+    return await fetchJson(`https://api.github.com/repos/${cfg.repo}/contents/version.json?ref=${encodeURIComponent(cfg.branch)}`, { Accept: 'application/vnd.github.raw' });
+  } catch {
+    return fetchJson(`https://raw.githubusercontent.com/${cfg.repo}/${cfg.branch}/version.json`);
+  }
+}
+
 async function checkForUpdate() {
   const current = chrome.runtime.getManifest().version;
   const cfg = await (await fetch(chrome.runtime.getURL('repo.json'))).json();
   const { updateUrlOverride, update: prev } = await chrome.storage.local.get(['updateUrlOverride', 'update']);
-  const url = updateUrlOverride || `https://raw.githubusercontent.com/${cfg.repo}/${cfg.branch}/version.json`;
   let state;
   try {
-    // raw.githubusercontent.com keeps answers for about 5 minutes; a changing query string skips that cache.
-    const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await fetchPublishedVersion(cfg, updateUrlOverride);
     if (!/^\d+(\.\d+){0,2}$/.test(String(data.version))) throw new Error('Unexpected version format');
     state = { current, latest: data.version, notes: String(data.notes || '').slice(0, 300), available: isNewer(data.version, current), checkedAt: Date.now(), error: null, repo: cfg.repo, branch: cfg.branch };
   } catch (e) {

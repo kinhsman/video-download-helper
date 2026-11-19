@@ -227,6 +227,13 @@ try {
   await setOverride(`${BASE}/same-version.json`);
   up = await call({ type: 'check-update' });
   check('same version means no update', up.available === false, JSON.stringify(up));
+  // the real thing: no override, so it asks GitHub (skipped when offline)
+  await evalIn(cdp, popupId, `chrome.storage.local.remove('updateUrlOverride')`);
+  const live = await call({ type: 'check-update' });
+  if (live.error && /Failed to fetch|NetworkError/.test(live.error)) console.log('SKIP live GitHub check (offline)');
+  else check('update check reaches GitHub and reads a version', !live.error && /^\d+\.\d+\.\d+$/.test(live.latest || ''), JSON.stringify(live));
+  await setOverride(`${BASE}/newer-version.json`);
+
   // a result saved before this copy was updated must not show a stale "update available"
   await evalIn(cdp, popupId, `chrome.storage.local.set({ update: { current: '0.0.1', latest: '0.0.2', available: true, notes: 'old', checkedAt: Date.now() } })`);
   const stale = await call({ type: 'update-state' });
