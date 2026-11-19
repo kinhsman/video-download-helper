@@ -44,9 +44,10 @@ jobs:
 
       - name: Helper downloads with yt-dlp
         shell: bash
+        timeout-minutes: 6
         run: |
           bash tests/make_fixtures.sh
           nohup python -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures > server.log 2>&1 &
           sleep 3
           curl -sI http://127.0.0.1:8791/sample.mp4 | head -1
-          timeout 600 python tests/test_host.py
+          python -u tests/test_host.py
