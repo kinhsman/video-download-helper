@@ -1,4 +1,4 @@
 {
-  "version": "0.3.4",
-  "notes": "Fixes Windows downloads through the helper hanging. Check for updates shows its result."
+  "version": "0.3.5",
+  "notes": "Cards say downloads via helper once the helper is set up."
 }

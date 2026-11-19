@@ -267,6 +267,12 @@ try {
   const masterSep = qa.items.find((i) => i.url.endsWith('master_sep.m3u8'));
   check('a rendition with the same length as a master is tucked away, not deleted', /part of another stream/.test(other?.minor || '') && masterSep && !masterSep.minor, JSON.stringify([other?.minor, masterSep?.minor]));
 
+  // with the helper connected, cards must not still say it is needed
+  const { targetId: cardsId } = await cdp.send('Target.createTarget', { url: `chrome-extension://${EXT_ID}/popup.html?tab=${qaTabId}` });
+  await sleep(2500);
+  const cardsText = await evalIn(cdp, cardsId, `document.getElementById('list').innerText`);
+  check('helper connected: cards say "downloads via helper", not "needs helper"', /downloads via helper/.test(cardsText) && !/needs helper/.test(cardsText), JSON.stringify(cardsText.slice(0, 300)));
+
   // whole-page download on a page with no protected video
   await cdp.send('Target.createTarget', { url: `${BASE}/plain.html` });
   await sleep(1500);

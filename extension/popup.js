@@ -96,6 +96,11 @@ function shortSource(url) {
   }
 }
 
+// Before the helper is set up this is a warning, afterwards it just says how the download will run.
+function helperChip() {
+  return helper.state === 'ok' ? chip('downloads via helper') : chip('needs helper', 'warn');
+}
+
 function renderItems() {
   const box = $('list');
   box.replaceChildren();
@@ -122,7 +127,7 @@ function renderItems() {
         if (hls.live) chips.push(chip('live', 'warn'));
         if (hls.protected) chips.push(chip(`protected: ${hls.protected}`, 'bad'));
         if (hls.error && !hls.variants.length) chips.push(chip('could not read playlist', 'warn'));
-        if (it.needsHelper && !hls.live) chips.push(chip('needs helper', 'warn'));
+        if (it.needsHelper) chips.push(helperChip());
         if (hls.variants.length) {
           select = el(
             'select',
@@ -138,7 +143,7 @@ function renderItems() {
       chips.push(chip('DASH stream'));
       if (it.dash?.duration) chips.push(chip(fmtDur(it.dash.duration)));
       if (it.protectedReason) chips.push(chip(`protected: ${it.protectedReason}`, 'bad'));
-      else chips.push(chip('needs helper', 'warn'));
+      else chips.push(helperChip());
     }
 
     // Does the chosen quality need the helper, and is the helper missing?
