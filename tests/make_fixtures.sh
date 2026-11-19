@@ -2,6 +2,7 @@
 # Builds local test media: a plain mp4, a plain HLS stream, an AES-128 encrypted HLS stream,
 # and a test page that loads them. Serve with: python3 -m http.server 8791 --directory tests/fixtures
 set -euo pipefail
+PYBIN="$(command -v python3 || command -v python)"
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH"
 OUT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixtures"
 mkdir -p "$OUT/hls" "$OUT/hls_enc"
@@ -48,7 +49,7 @@ printf '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="st
 head -c 25000000 /dev/urandom > big.mp4
 
 echo '{"version":"99.0.0","notes":"Test update."}' > newer-version.json
-echo "{\"version\":\"$(python3 -c 'import json;print(json.load(open("../../extension/manifest.json"))["version"])')\",\"notes\":\"\"}" > same-version.json
+echo "{\"version\":\"$("${PYBIN:-python3}" -c 'import json;print(json.load(open("../../extension/manifest.json"))["version"])')\",\"notes\":\"\"}" > same-version.json
 
 cat > plain.html <<'EOF'
 <!doctype html>

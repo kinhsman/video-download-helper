@@ -46,6 +46,7 @@ let protectedSite = false;
 let showMinor = false;
 let update = null;
 let repoCfg = { repo: '', branch: 'main' };
+let isWindows = false;
 let jobs = [];
 let prefs = { quality: 'best', cookies: false };
 
@@ -178,8 +179,8 @@ function jobRow(j, withProgress) {
 
 // "/Users/me/Downloads/VideoHelper/x.mp4" -> "Downloads/VideoHelper/x.mp4"
 function tidyPath(path) {
-  const m = path.match(/(Downloads\/.*)$/);
-  return m ? m[1] : path.split('/').pop();
+  const m = path.match(/(Downloads[\\/].*)$/);
+  return m ? m[1] : path.split(/[\\/]/).pop();
 }
 
 function renderJobs() {
@@ -199,7 +200,10 @@ async function renderHistory() {
   );
 }
 
-const installCmd = () => `curl -fsSL https://raw.githubusercontent.com/${repoCfg.repo}/${repoCfg.branch}/install.sh | bash`;
+const installCmd = () => {
+  const base = `https://raw.githubusercontent.com/${repoCfg.repo}/${repoCfg.branch}`;
+  return isWindows ? `irm ${base}/install.ps1 | iex` : `curl -fsSL ${base}/install.sh | bash`;
+};
 
 function renderUpdate() {
   const box = $('update');
@@ -247,7 +251,7 @@ function renderUpdate() {
     );
   } else {
     box.append(
-      el('p', {}, 'Run this in Terminal, then press the reload arrow on this extension in chrome://extensions:'),
+      el('p', {}, `Run this in ${isWindows ? 'PowerShell' : 'Terminal'}, then press the reload arrow on this extension in chrome://extensions:`),
       el('code', {}, installCmd()),
     );
   }
@@ -271,7 +275,7 @@ function renderHelper() {
       }, 'Enable helper'),
     );
   } else if (helper.state === 'missing') {
-    f.append('Helper is not installed. Run this in Terminal, then reopen:', el('code', {}, installCmd()));
+    f.append(`Helper is not installed. Run this in ${isWindows ? 'PowerShell' : 'Terminal'}, then reopen:`, el('code', {}, installCmd()));
   } else {
     f.append('Checking helper...');
   }
@@ -312,7 +316,7 @@ function renderHint() {
     );
   } else if (helper.state === 'missing') {
     hint.hidden = false;
-    hint.append(el('p', {}, 'This site needs the helper app. Run this in Terminal, then reopen:'), el('code', {}, installCmd()));
+    hint.append(el('p', {}, `This site needs the helper app. Run this in ${isWindows ? 'PowerShell' : 'Terminal'}, then reopen:`), el('code', {}, installCmd()));
   } else {
     hint.hidden = true;
   }
@@ -365,6 +369,7 @@ async function init() {
   tabId = forced || tab?.id;
   await loadPrefs();
   repoCfg = await (await fetch(chrome.runtime.getURL('repo.json'))).json();
+  isWindows = (await chrome.runtime.getPlatformInfo()).os === 'win';
   update = await ask({ type: 'update-state' });
   renderUpdate();
   await Promise.all([refreshItems(), loadJobs(), renderHistory()]);

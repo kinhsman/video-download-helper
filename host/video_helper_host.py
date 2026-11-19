@@ -7,7 +7,7 @@ Chrome starts one copy of this script per connection. Messages are JSON with a
 Requests:  {"cmd": "ping"}
            {"cmd": "download", "id", "url", "referer", "quality", "cookies", "title", "named"}
            {"cmd": "cancel", "id"}
-           {"cmd": "reveal", "path"}        show a saved file in Finder
+           {"cmd": "reveal", "path"}        show a saved file in Finder or Explorer
            {"cmd": "update"}                download the latest release over the installed copy
 Replies:   {"type": "pong", "ytdlp", "ffmpeg", "version", "installed"}
            {"type": "updated", "version"}
@@ -42,10 +42,21 @@ FORMATS = {
     "audio": ["-f", "ba[ext=m4a]/ba/b", "-x", "--audio-format", "m4a"],
 }
 
-# Chrome starts us with a bare PATH, so add the usual places for brew tools and ~/.local/bin.
-os.environ["PATH"] = os.pathsep.join(
-    [str(Path.home() / ".local" / "bin"), "/opt/homebrew/bin", "/usr/local/bin", os.environ.get("PATH", "")]
-)
+IS_WINDOWS = sys.platform == "win32"
+# Keep helper tools from flashing a console window on Windows.
+NOWINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if IS_WINDOWS else 0
+
+# The browser starts us with a bare PATH, so add the usual places for yt-dlp and ffmpeg.
+if IS_WINDOWS:
+    _extra = [
+        str(Path.home() / ".local" / "bin"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links"),
+        os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "chocolatey", "bin"),
+        os.path.join(os.environ.get("USERPROFILE", ""), "scoop", "shims"),
+    ]
+else:
+    _extra = [str(Path.home() / ".local" / "bin"), "/opt/homebrew/bin", "/usr/local/bin"]
+os.environ["PATH"] = os.pathsep.join(_extra + [os.environ.get("PATH", "")])
 
 _write_lock = threading.Lock()
 
@@ -80,7 +91,7 @@ def tool_version(cmd):
     if not exe:
         return None
     try:
-        out = subprocess.run([exe, "--version" if cmd == "yt-dlp" else "-version"], capture_output=True, text=True, timeout=10).stdout
+        out = subprocess.run([exe, "--version" if cmd == "yt-dlp" else "-version"], capture_output=True, text=True, timeout=10, creationflags=NOWINDOW).stdout
         return out.splitlines()[0].strip() if out else "unknown"
     except Exception:
         return None
@@ -168,7 +179,10 @@ class Download:
         existed = False
         try:
             cmd = build_command(self.req, path_file)
-            self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            self.proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+                bufsize=1, creationflags=NOWINDOW,
+            )
             for line in self.proc.stdout:
                 line = line.strip()
                 if line.startswith("PROGRESS|"):
@@ -189,7 +203,7 @@ class Download:
                 return
             out_path = ""
             try:
-                lines = [l for l in Path(path_file).read_text().splitlines() if l.strip()]
+                lines = [l for l in Path(path_file).read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
                 out_path = lines[-1] if lines else ""
             except OSError:
                 pass
@@ -277,7 +291,11 @@ def do_update():
                     shutil.copytree(src / name, old)
                 for f in ("version.json", "extension-id.txt"):
                     shutil.copy2(src / f, ROOT / f)
-                subprocess.run(["bash", str(ROOT / "host" / "install.sh"), "--refresh"], check=True, capture_output=True, timeout=60)
+                if IS_WINDOWS:
+                    refresh = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "host" / "install.ps1"), "-Refresh", "-Python", sys.executable]
+                else:
+                    refresh = ["bash", str(ROOT / "host" / "install.sh"), "--refresh"]
+                subprocess.run(refresh, check=True, capture_output=True, timeout=90, creationflags=NOWINDOW)
             except Exception:
                 for old, bak in backups:  # put the previous copy back
                     shutil.rmtree(old, ignore_errors=True)
@@ -302,7 +320,10 @@ def reveal(path):
     if not target.exists():
         send({"type": "error", "message": "That file was moved or deleted."})
         return
-    subprocess.run(["open", "-R", str(target)], check=False)
+    if IS_WINDOWS:
+        subprocess.run(["explorer.exe", f"/select,{target}"], check=False, creationflags=NOWINDOW)  # exits 1 even on success
+    else:
+        subprocess.run(["open", "-R", str(target)], check=False)
     send({"type": "revealed"})
 
 

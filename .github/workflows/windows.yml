@@ -1,0 +1,50 @@
+name: Windows install
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Version files agree
+        run: python tests/test_version.py
+
+      - name: Playlist parser
+        run: node tests/test_parser.mjs
+
+      - name: PowerShell scripts parse
+        shell: powershell
+        run: |
+          foreach ($f in 'install.ps1', 'host\install.ps1') {
+            $errs = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errs) | Out-Null
+            if ($errs) { $errs | ForEach-Object { Write-Error $_.Message }; exit 1 }
+            Write-Host "parsed $f"
+          }
+
+      - name: Installer, registry, helper and self-update
+        run: python tests/test_install.py
+
+      - name: Install yt-dlp and ffmpeg
+        run: |
+          pip install yt-dlp
+          choco install ffmpeg -y --no-progress
+
+      - name: Helper downloads with yt-dlp
+        shell: bash
+        run: |
+          bash tests/make_fixtures.sh
+          python -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures &
+          sleep 3
+          python tests/test_host.py

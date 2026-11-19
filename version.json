@@ -1,4 +1,4 @@
 {
-  "version": "0.2.0",
-  "notes": "First public release."
+  "version": "0.3.0",
+  "notes": "Windows support: one-line PowerShell install."
 }
