@@ -19,6 +19,11 @@ function Install-VideoDownloadHelper {
   $Branch = if ($env:VDH_BRANCH) { $env:VDH_BRANCH } else { 'main' }
   $Dest = if ($env:VDH_HOME) { $env:VDH_HOME } else { Join-Path $env:USERPROFILE '.video-download-helper' }
 
+  if ($env:VDH_BRANCH -or $env:VDH_REPO) {
+    Write-Host "Note: VDH_BRANCH / VDH_REPO is set in this window, so this installs '$Repo' branch '$Branch'."
+    Write-Host '      To go back to the normal release: Remove-Item Env:VDH_BRANCH -ErrorAction SilentlyContinue; Remove-Item Env:VDH_REPO -ErrorAction SilentlyContinue'
+  }
+
   $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("vdh-" + [System.Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $tmp | Out-Null
   try {
@@ -45,6 +50,12 @@ function Install-VideoDownloadHelper {
     if (Test-Path $oldFile) {
       try { $oldVersion = (Get-Content $oldFile -Raw | ConvertFrom-Json).version } catch { $oldVersion = 'unknown' }
     }
+
+    try {
+      if ($oldVersion -and ([version]$newVersion -lt [version]$oldVersion)) {
+        Write-Host "Warning: this download ($newVersion) is OLDER than what you have ($oldVersion). Continuing because you asked for it."
+      }
+    } catch { }
 
     New-Item -ItemType Directory -Path $Dest -Force | Out-Null
     foreach ($d in @('extension', 'host')) {

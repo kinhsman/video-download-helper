@@ -22,6 +22,11 @@ die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 [ "$(uname -s)" = "Darwin" ] || die "this installer is for macOS."
 for t in curl tar python3; do command -v "$t" >/dev/null 2>&1 || die "$t is required."; done
 
+if [ -n "${VDH_BRANCH:-}${VDH_REPO:-}" ]; then
+  say "Note: VDH_BRANCH / VDH_REPO is set in this shell, so this installs '$REPO' branch '$BRANCH'."
+  say "      To go back to the normal release: unset VDH_BRANCH VDH_REPO"
+fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -42,6 +47,10 @@ done
 NEW_VERSION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$TMP/src/version.json")"
 OLD_VERSION="none"
 [ -f "$DEST/version.json" ] && OLD_VERSION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$DEST/version.json" 2>/dev/null || echo unknown)"
+
+if [ "$OLD_VERSION" != "none" ] && [ "$OLD_VERSION" != "unknown" ] && [ "$(printf '%s\n%s\n' "$NEW_VERSION" "$OLD_VERSION" | sort -V | head -1)" = "$NEW_VERSION" ] && [ "$NEW_VERSION" != "$OLD_VERSION" ]; then
+  say "Warning: this download ($NEW_VERSION) is OLDER than what you have ($OLD_VERSION). Continuing because you asked for it."
+fi
 
 mkdir -p "$DEST"
 for d in extension host; do
