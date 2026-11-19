@@ -110,7 +110,7 @@ def tool_version(cmd):
         return None
     try:
         # The first run of a freshly installed yt-dlp.exe can take a while (unpacking, virus scan).
-        out = subprocess.run([exe, "--version" if cmd == "yt-dlp" else "-version"], capture_output=True, text=True, timeout=45, creationflags=NOWINDOW).stdout
+        out = subprocess.run([exe, "--version" if cmd == "yt-dlp" else "-version"], capture_output=True, text=True, timeout=45, creationflags=NOWINDOW, stdin=subprocess.DEVNULL).stdout
         return out.splitlines()[0].strip() if out else "unknown"
     except Exception:
         return None
@@ -199,8 +199,10 @@ class Download:
         try:
             cmd = build_command(self.req, path_file)
             dbg("running", cmd)
+            # stdin=DEVNULL is essential on Windows: a child that inherits our stdin pipe blocks on it
+            # while the main thread is waiting for the browser's next message, and yt-dlp never starts.
             self.proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+                cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                 bufsize=1, creationflags=NOWINDOW,
             )
             for line in self.proc.stdout:
@@ -317,7 +319,7 @@ def do_update():
                     refresh = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "host" / "install.ps1"), "-Refresh", "-Python", sys.executable]
                 else:
                     refresh = ["bash", str(ROOT / "host" / "install.sh"), "--refresh"]
-                subprocess.run(refresh, check=True, capture_output=True, timeout=90, creationflags=NOWINDOW)
+                subprocess.run(refresh, check=True, capture_output=True, timeout=90, creationflags=NOWINDOW, stdin=subprocess.DEVNULL)
             except Exception:
                 for old, bak in backups:  # put the previous copy back
                     shutil.rmtree(old, ignore_errors=True)
@@ -343,9 +345,9 @@ def reveal(path):
         send({"type": "error", "message": "That file was moved or deleted."})
         return
     if IS_WINDOWS:
-        subprocess.run(["explorer.exe", f"/select,{target}"], check=False, creationflags=NOWINDOW)  # exits 1 even on success
+        subprocess.run(["explorer.exe", f"/select,{target}"], check=False, creationflags=NOWINDOW, stdin=subprocess.DEVNULL)  # exits 1 even on success
     else:
-        subprocess.run(["open", "-R", str(target)], check=False)
+        subprocess.run(["open", "-R", str(target)], check=False, stdin=subprocess.DEVNULL)
     send({"type": "revealed"})
 
 

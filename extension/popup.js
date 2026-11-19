@@ -249,24 +249,53 @@ const installCmd = () => {
   return isWindows ? `irm ${base}/install.ps1 | iex` : `curl -fsSL ${base}/install.sh | bash`;
 };
 
+function ago(ms) {
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  return `${Math.round(m / 60)} h ago`;
+}
+
+function versionIsNewer(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0;
+  }
+  return false;
+}
+
+function updateStatusText() {
+  if (!update?.checkedAt) return '';
+  if (update.error) return `Could not check (${update.error}).`;
+  const published = `Latest published: ${update.latest}. Checked ${ago(update.checkedAt)}.`;
+  if (update.available) return `Update found. ${published}`;
+  if (versionIsNewer(update.current, update.latest)) return `Up to date (this copy is newer than the published ${update.latest}). Checked ${ago(update.checkedAt)}.`;
+  return `Up to date. ${published}`;
+}
+
 function renderUpdate() {
   const box = $('update');
   box.replaceChildren();
   const current = chrome.runtime.getManifest().version;
-  $('version').replaceChildren(
-    `Version ${current} `,
-    el('button', {
-      class: 'link',
-      onclick: async (e) => {
-        e.target.textContent = 'Checking...';
-        try {
-          update = await ask({ type: 'check-update' });
-        } catch {}
-        renderUpdate();
-      },
-    }, 'Check for updates'),
-    update?.error ? ` (last check failed: ${update.error})` : update?.checkedAt && !update.available ? ' (up to date)' : '',
-  );
+  const status = el('div', { class: 'detail' }, updateStatusText());
+  const checkBtn = el('button', {
+    class: 'link',
+    onclick: async () => {
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'Checking...';
+      status.textContent = '';
+      try {
+        const [result] = await Promise.all([ask({ type: 'check-update' }), new Promise((r) => setTimeout(r, 600))]);
+        update = result;
+      } catch (err) {
+        update = { ...(update || {}), current, error: err.message, checkedAt: Date.now() };
+      }
+      renderUpdate();
+    },
+  }, 'Check for updates');
+  $('version').replaceChildren(`Version ${current} `, checkBtn, status);
   if (!update?.available) {
     box.hidden = true;
     return;

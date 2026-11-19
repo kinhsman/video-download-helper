@@ -227,6 +227,20 @@ try {
   await setOverride(`${BASE}/same-version.json`);
   up = await call({ type: 'check-update' });
   check('same version means no update', up.available === false, JSON.stringify(up));
+  // the button itself: clicking it must show a result the user can see
+  await setOverride(`${BASE}/same-version.json`);
+  const uiText = await evalIn(cdp, popupId, `(async () => {
+    location.reload();
+    return 'reloading';
+  })()`).catch(() => 'reloading');
+  await sleep(1500);
+  const clicked = await evalIn(cdp, popupId, `(async () => {
+    const b = document.querySelector('#version button');
+    b.click();
+    await new Promise(r => setTimeout(r, 1500));
+    return document.getElementById('version').innerText;
+  })()`);
+  check('Check for updates button shows a visible result', /Checked just now/.test(clicked) && /Latest published/.test(clicked), JSON.stringify(clicked));
   await setOverride(`${BASE}/newer-version.json`);
   await call({ type: 'check-update' });
 
