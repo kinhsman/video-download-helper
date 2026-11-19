@@ -5,7 +5,7 @@ Chrome starts one copy of this script per connection. Messages are JSON with a
 4-byte native-endian length prefix on stdin/stdout.
 
 Requests:  {"cmd": "ping"}
-           {"cmd": "download", "id", "url", "referer", "quality", "cookies", "title", "named"}
+           {"cmd": "download", "id", "url", "referer", "quality", "cookies", "title", "named", "subs": {"mode", "langs"}}
            {"cmd": "cancel", "id"}
            {"cmd": "reveal", "path"}        show a saved file in Finder or Explorer
            {"cmd": "update"}                download the latest release over the installed copy
@@ -95,6 +95,9 @@ def is_http(url):
 def find_tool(name):
     """Where the installer found the tool (tools.json), else wherever this process can see it.
     The browser's own PATH can be older than the installer's, so the remembered path wins."""
+    forced = os.environ.get("VDH_TOOL_" + name.upper().replace("-", "_"))  # test hook
+    if forced:
+        return forced
     try:
         remembered = json.loads((ROOT / "tools.json").read_text(encoding="utf-8")).get(name)
         if remembered and Path(remembered).exists():
@@ -147,7 +150,41 @@ def output_template(req):
     return str(OUT_DIR / "%(title).150B [%(id)s].%(ext)s")
 
 
-def build_command(req, path_file):
+SUB_MODES = {"off", "file", "embed", "only"}
+COOKIE_ERROR = re.compile(r"cookie (database|file)|cookies-from-browser|decrypt", re.IGNORECASE)
+SUB_LINE = re.compile(r"Writing video (?:subtitles|automatic captions|auto\w* captions?) to: (.+)$", re.IGNORECASE)
+
+
+def sub_args(req):
+    subs = req.get("subs") or {}
+    mode = subs.get("mode", "off")
+    if mode not in SUB_MODES:
+        raise ValueError("Unknown subtitle option.")
+    if mode == "off":
+        return []
+    langs = subs.get("langs") or "en"
+    if not re.fullmatch(r"[A-Za-z0-9,.*_-]{1,60}", langs):
+        raise ValueError("Subtitle languages look wrong. Use codes like en,vi,th.")
+    args = ["--write-subs", "--write-auto-subs", "--sub-langs", langs]
+    if mode == "file":
+        args += ["--convert-subs", "srt"]
+    elif mode == "embed":
+        args += ["--embed-subs"]
+    else:  # only
+        args += ["--skip-download", "--convert-subs", "srt"]
+    return args
+
+
+def js_runtime_args():
+    """YouTube needs a JavaScript runtime for yt-dlp to solve its signature puzzle. Prefer deno, then node."""
+    for name in ("deno", "node"):
+        exe = find_tool(name)
+        if exe:
+            return ["--js-runtimes", f"{name}:{exe}"]
+    return []
+
+
+def build_command(req, path_file, cookies=False, js=True):
     url = req.get("url", "")
     if not is_http(url):
         raise ValueError("Only http and https addresses are allowed.")
@@ -156,7 +193,7 @@ def build_command(req, path_file):
         raise ValueError("Unknown quality.")
     ytdlp = find_tool("yt-dlp")
     if not ytdlp:
-        raise ValueError("yt-dlp is not installed (brew install yt-dlp).")
+        raise ValueError("yt-dlp is not installed. Run the install command again.")
 
     cmd = [
         ytdlp,
@@ -170,14 +207,17 @@ def build_command(req, path_file):
         "-o", output_template(req),
         "--merge-output-format", "mp4",
         *FORMATS[quality],
+        *sub_args(req),
     ]
     ffmpeg = find_tool("ffmpeg")
     if ffmpeg:
         cmd += ["--ffmpeg-location", ffmpeg]
+    if js:
+        cmd += js_runtime_args()
     referer = req.get("referer", "")
     if referer and is_http(referer):
         cmd += ["--add-header", f"Referer:{referer}"]
-    if req.get("cookies"):
+    if cookies:
         cmd += ["--cookies-from-browser", "chrome"]
     cmd += ["--", url]
     return cmd
@@ -190,14 +230,13 @@ class Download:
         self.proc = None
         self.canceled = False
 
-    def run(self):
-        OUT_DIR.mkdir(parents=True, exist_ok=True)
+    def _attempt(self, cookies, js):
+        """One yt-dlp run. Returns its exit code, saved file, subtitle files and last error line."""
         fd, path_file = tempfile.mkstemp(prefix="vdh-", suffix=".txt")
         os.close(fd)
-        last_error = ""
-        existed = False
+        res = {"code": -1, "path": "", "subs": [], "error": "", "existed": False}
         try:
-            cmd = build_command(self.req, path_file)
+            cmd = build_command(self.req, path_file, cookies=cookies, js=js)
             dbg("running", cmd)
             # stdin=DEVNULL is essential on Windows: a child that inherits our stdin pipe blocks on it
             # while the main thread is waiting for the browser's next message, and yt-dlp never starts.
@@ -218,30 +257,75 @@ class Download:
                         "eta": eta.strip() if eta.strip() not in ("NA", "Unknown") else "",
                     })
                 elif line.startswith("ERROR"):
-                    last_error = line
+                    res["error"] = line
                 elif "has already been downloaded" in line:
-                    existed = True
-            code = self.proc.wait()
-            dbg("yt-dlp exited", code)
-            if self.canceled:
-                return
-            out_path = ""
+                    res["existed"] = True
+                else:
+                    sub = SUB_LINE.search(line)
+                    if sub:
+                        res["subs"].append(sub.group(1).strip())
+                    elif line.startswith("[") and not line.startswith("[download]"):
+                        # Extraction can take a while on big sites, so show what yt-dlp is doing.
+                        send({"type": "progress", "id": self.id, "percent": None, "note": line[:90]})
+            res["code"] = self.proc.wait()
+            dbg("yt-dlp exited", res["code"])
             try:
                 lines = [l for l in Path(path_file).read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
-                out_path = lines[-1] if lines else ""
+                res["path"] = lines[-1] if lines else ""
             except OSError:
                 pass
-            if code == 0 and out_path and Path(out_path).exists():
-                send({"type": "done", "id": self.id, "path": out_path, "existed": existed})
-            else:
-                send({"type": "error", "id": self.id, "message": (last_error or f"yt-dlp stopped with code {code}")[:300]})
-        except Exception as e:  # noqa: BLE001
-            send({"type": "error", "id": self.id, "message": str(e)[:300]})
         finally:
             try:
                 os.unlink(path_file)
             except OSError:
                 pass
+        return res
+
+    @staticmethod
+    def _final_sub_files(paths):
+        """yt-dlp converts .vtt to .srt after writing, so report whichever file really exists."""
+        out = []
+        for p in paths:
+            base = p.rsplit(".", 1)[0] if "." in p else p
+            for cand in (base + ".srt", p):
+                if Path(cand).exists():
+                    out.append(cand)
+                    break
+        return list(dict.fromkeys(out))
+
+    def run(self):
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        notes = []
+        try:
+            cookies = bool(self.req.get("cookies"))
+            res = self._attempt(cookies, True)
+            if res["code"] != 0 and not self.canceled and "js-runtimes" in res["error"] and "no such option" in res["error"].lower():
+                res = self._attempt(cookies, False)  # an older yt-dlp without --js-runtimes
+            if res["code"] != 0 and not self.canceled and cookies and COOKIE_ERROR.search(res["error"]):
+                # Chrome keeps its cookie file locked (and newer Chrome encrypts it) while it is running.
+                send({"type": "progress", "id": self.id, "percent": None, "note": "Chrome has its cookies locked, continuing without your login"})
+                notes.append("without your Chrome login")
+                res = self._attempt(False, True)
+            if self.canceled:
+                return
+            subs = self._final_sub_files(res["subs"])
+            mode = (self.req.get("subs") or {}).get("mode", "off")
+            if mode == "only":
+                if res["code"] == 0 and subs:
+                    send({"type": "done", "id": self.id, "path": subs[0], "subs": subs, "notes": notes, "existed": False})
+                elif res["code"] == 0:
+                    send({"type": "error", "id": self.id, "message": "No subtitles found for those languages. Try other codes, for example en,vi."})
+                else:
+                    send({"type": "error", "id": self.id, "message": (res["error"] or f"yt-dlp stopped with code {res['code']}")[:300]})
+                return
+            if res["code"] == 0 and res["path"] and Path(res["path"]).exists():
+                if mode == "file" and not subs:
+                    notes.append("no subtitles found")
+                send({"type": "done", "id": self.id, "path": res["path"], "subs": subs, "notes": notes, "existed": res["existed"]})
+            else:
+                send({"type": "error", "id": self.id, "message": (res["error"] or f"yt-dlp stopped with code {res['code']}")[:300]})
+        except Exception as e:  # noqa: BLE001
+            send({"type": "error", "id": self.id, "message": str(e)[:300]})
 
     def cancel(self):
         self.canceled = True
@@ -371,6 +455,7 @@ def main():
                 "ytdlp_path": find_tool("yt-dlp"),
                 "ffmpeg": bool(find_tool("ffmpeg")),
                 "ffmpeg_path": find_tool("ffmpeg"),
+                "jsruntime": "deno" if find_tool("deno") else ("node" if find_tool("node") else None),
                 "version": installed_version(),
                 "installed": is_installed_copy(),
             })

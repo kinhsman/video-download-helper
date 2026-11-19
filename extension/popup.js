@@ -48,15 +48,20 @@ let update = null;
 let repoCfg = { repo: '', branch: 'main' };
 let isWindows = false;
 let jobs = [];
-let prefs = { quality: 'best', cookies: false };
+let prefs = { quality: 'best', cookies: false, subMode: 'off', subLangs: 'en' };
 
 async function loadPrefs() {
   const { prefs: p } = await chrome.storage.local.get('prefs');
   prefs = { ...prefs, ...p };
   $('page-quality').value = prefs.quality;
   $('cookies').checked = prefs.cookies;
+  $('sub-mode').value = prefs.subMode;
+  $('sub-langs').value = prefs.subLangs;
+  $('sub-hint').hidden = prefs.subMode === 'off';
 }
 const savePrefs = () => chrome.storage.local.set({ prefs });
+// What to ask yt-dlp for. Spaces are dropped so "en, vi" works.
+const subsPayload = () => (prefs.subMode === 'off' ? undefined : { mode: prefs.subMode, langs: (prefs.subLangs || 'en').replace(/\s+/g, '') });
 
 function chip(text, kind = '') {
   return el('span', { class: `chip ${kind}` }, text);
@@ -161,7 +166,7 @@ function renderItems() {
       onclick: async (e) => {
         e.target.disabled = true;
         try {
-          await ask({ type: 'download', tabId, itemKey: it.key, variantUrl: select?.value, quality: prefs.quality, cookies: prefs.cookies });
+          await ask({ type: 'download', tabId, itemKey: it.key, variantUrl: select?.value, quality: prefs.quality, cookies: prefs.cookies, subs: subsPayload() });
         } catch (err) {
           showError(err.message);
         }
@@ -358,6 +363,7 @@ function renderHelper() {
     const yt = helper.ytdlp ? `yt-dlp ${helper.ytdlp}` : helper.ytdlp_path ? 'yt-dlp found but slow to answer' : 'yt-dlp not found';
     const ff = helper.ffmpeg ? 'ffmpeg ok' : 'ffmpeg not found';
     f.append(`Helper connected. ${yt}, ${ff}.`);
+    if (helper.state === 'ok' && !helper.jsruntime) f.append(el('div', { class: 'note' }, 'No JavaScript runtime found: YouTube downloads may fail. The install command adds one.'));
     if (!helper.ytdlp_path || !helper.ffmpeg) {
       f.append(
         el('div', {}, `Missing tools are installed by the install command. Run it again in ${isWindows ? 'PowerShell' : 'Terminal'}, then reopen:`),
@@ -484,6 +490,16 @@ async function init() {
     prefs.quality = e.target.value;
     savePrefs();
   });
+  $('sub-mode').addEventListener('change', (e) => {
+    prefs.subMode = e.target.value;
+    $('sub-hint').hidden = prefs.subMode === 'off';
+    savePrefs();
+  });
+  $('sub-langs').addEventListener('change', (e) => {
+    prefs.subLangs = e.target.value.trim() || 'en';
+    e.target.value = prefs.subLangs;
+    savePrefs();
+  });
   $('cookies').addEventListener('change', (e) => {
     prefs.cookies = e.target.checked;
     savePrefs();
@@ -491,7 +507,7 @@ async function init() {
   $('page-go').addEventListener('click', async (e) => {
     e.target.disabled = true;
     try {
-      await ask({ type: 'download-page', tabId, quality: prefs.quality, cookies: prefs.cookies });
+      await ask({ type: 'download-page', tabId, quality: prefs.quality, cookies: prefs.cookies, subs: subsPayload() });
     } catch (err) {
       showError(err.message);
     }

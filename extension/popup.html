@@ -32,6 +32,16 @@
       </select>
       <button id="page-go">Download page</button>
     </div>
+    <div class="row subs">
+      <select id="sub-mode" aria-label="Subtitles">
+        <option value="off">No subtitles</option>
+        <option value="file">Subtitles as .srt file</option>
+        <option value="embed">Subtitles inside the video</option>
+        <option value="only">Subtitles only (no video)</option>
+      </select>
+      <input id="sub-langs" value="en" aria-label="Subtitle languages" placeholder="en,vi,th" maxlength="60" spellcheck="false">
+    </div>
+    <div class="detail" id="sub-hint" hidden>Languages: codes like en, vi, th, separated by commas. Includes auto-generated captions.</div>
     <label class="check"><input type="checkbox" id="cookies"> Use my Chrome login (cookies)</label>
   </section>
 

@@ -60,7 +60,7 @@ def media(name, live=False, n=160):
         body += "#EXT-X-ENDLIST\n"
     open(f"qa/{name}", "w").write(body)
 media("v1080.m3u8"); media("v720.m3u8"); media("audio.m3u8"); media("live.m3u8", live=True, n=6)
-media("mixed_a.m3u8"); media("mixed_b.m3u8"); media("other.m3u8")
+media("mixed_a.m3u8"); media("mixed_b.m3u8"); media("other.m3u8"); media("spa_a.m3u8", n=100); media("spa_b.m3u8", n=120)
 open("qa/master_sep.m3u8", "w").write('''#EXTM3U
 #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",DEFAULT=YES,URI="audio.m3u8"
 #EXT-X-STREAM-INF:BANDWIDTH=3700000,RESOLUTION=1920x1080,AUDIO="aud"
@@ -75,6 +75,19 @@ mixed_a.m3u8?token=abc
 mixed_b.m3u8
 ''')
 open("qa/garbage.m3u8", "w").write("<html>this is not a playlist</html>")
+open("spa.html", "w", encoding="utf-8").write('''<!doctype html>
+<meta charset="utf-8">
+<title>SPA video A</title>
+<script>
+  // like YouTube: one page, the address changes without a reload and a new video starts
+  fetch('qa/spa_a.m3u8').then(r => r.text());
+  setTimeout(() => {
+    history.pushState({}, '', '/spa.html?v=B');
+    document.title = 'SPA video B';
+    fetch('qa/spa_b.m3u8').then(r => r.text());
+  }, 2500);
+</script>
+''')
 open("qa.html", "w", encoding="utf-8").write('''<!doctype html>
 <meta charset="utf-8">
 <meta property="og:video:url" content="http://127.0.0.1:8791/embed/TdFBnN-M-5Y">

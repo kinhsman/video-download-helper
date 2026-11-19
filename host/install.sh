@@ -33,13 +33,22 @@ if [ "$REFRESH" = 0 ] && [ -z "${VDH_SKIP_TOOLS:-}" ]; then
       echo "  Homebrew is not installed. Get it from https://brew.sh, then run: brew install $tool"
     fi
   done
+  # YouTube needs a JavaScript runtime for yt-dlp. Node is fine, otherwise add deno.
+  if ! command -v deno >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+    echo "No JavaScript runtime found (YouTube downloads need one)."
+    if [ -n "${VDH_NO_INSTALL:-}" ]; then
+      echo "  Skipping (VDH_NO_INSTALL is set). Later: brew install deno"
+    elif command -v brew >/dev/null 2>&1; then
+      HOMEBREW_NO_ENV_HINTS=1 brew install deno || echo "  Could not install deno. Later: brew install deno"
+    fi
+  fi
 fi
 
 # Remember where the tools are, because the browser's own PATH can be older than ours.
 if [ "$REFRESH" = 0 ]; then
   "$PY" - "$ROOT/tools.json" <<'PYTOOLS'
 import json, shutil, sys
-found = {n: shutil.which(n) for n in ("yt-dlp", "ffmpeg") if shutil.which(n)}
+found = {n: shutil.which(n) for n in ("yt-dlp", "ffmpeg", "deno", "node") if shutil.which(n)}
 json.dump(found, open(sys.argv[1], "w"))
 for n in ("yt-dlp", "ffmpeg"):
     print(f"Found {n}: {found[n]}" if n in found else f"{n} not found (only needed for YouTube-style sites).")

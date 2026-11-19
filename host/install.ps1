@@ -93,19 +93,25 @@ if (-not $Refresh -and -not $env:VDH_SKIP_TOOLS) {
     Write-Host "$($t.cmd) is not installed (needed for YouTube-style sites)."
     [void](Install-WithWinget $t.id $t.cmd)
   }
+  # YouTube needs a JavaScript runtime for yt-dlp. Node is fine, otherwise add deno.
+  if (-not (Find-Tool 'deno') -and -not (Find-Tool 'node')) {
+    Write-Host 'No JavaScript runtime found (YouTube downloads need one).'
+    [void](Install-WithWinget 'DenoLand.Deno' 'deno')
+  }
 }
 
 # --- remember where the tools are, because the browser's own PATH can be older than ours ---
 if (-not $Refresh) {
   $found = [ordered]@{}
-  foreach ($name in @('yt-dlp', 'ffmpeg')) {
+  foreach ($name in @('yt-dlp', 'ffmpeg', 'deno', 'node')) {
     $cmd = Get-Command $name -ErrorAction SilentlyContinue
     if ($cmd) { $found[$name] = $cmd.Source }
     else {
       $link = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\$name.exe"
       if (Test-Path $link) { $found[$name] = $link }
     }
-    if ($found.Contains($name)) { Write-Host "Found ${name}: $($found[$name])" } else { Write-Host "${name} not found (only needed for YouTube-style sites)." }
+    if ($found.Contains($name)) { Write-Host "Found ${name}: $($found[$name])" }
+    elseif ($name -in @('yt-dlp', 'ffmpeg')) { Write-Host "${name} not found (only needed for YouTube-style sites)." }
   }
   [System.IO.File]::WriteAllText((Join-Path $Root 'tools.json'), ($found | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
 }

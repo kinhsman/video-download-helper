@@ -10,6 +10,7 @@ const SAVE_DIR = 'VideoHelper';
 // ---------- state ----------
 
 const tabItems = new Map(); // tabId -> Map(key -> item)
+const tabPageKey = new Map(); // tabId -> which page (or YouTube video) the tab is on right now
 const jobs = new Map(); // jobId -> job
 const helperPorts = new Map(); // jobId -> native port
 let saveJobsTimer = null;
@@ -68,6 +69,17 @@ function newJob(fields) {
 }
 
 // ---------- helpers ----------
+
+// Single page apps (YouTube) change the address without loading a new page, so the video is part of the key.
+function pageKeyOf(url) {
+  try {
+    const u = new URL(url);
+    const v = u.searchParams.get('v');
+    return u.origin + u.pathname + (v ? `?v=${v}` : '');
+  } catch {
+    return '';
+  }
+}
 
 function hash(str) {
   let h = 5381;
@@ -194,8 +206,11 @@ async function addItem(tabId, info) {
     title: tab?.title || '',
     time: Date.now(),
     source: info.source || 'network',
+    pageKey: pageKeyOf(tab?.url),
     hls: null,
   };
+  if (item.pageKey) tabPageKey.set(tabId, item.pageKey);
+  if (items.size >= 60) items.delete(items.keys().next().value);
   items.set(key, item);
   await persistTab(tabId);
   updateBadge(tabId);
@@ -300,7 +315,9 @@ function protectedReasonOf(it) {
 }
 
 function visibleItems(tabId) {
-  const items = [...(tabItems.get(tabId)?.values() || [])];
+  // Items found on an earlier video of the same tab (YouTube keeps one page) are not this video's.
+  const here = tabPageKey.get(tabId);
+  const items = [...(tabItems.get(tabId)?.values() || [])].filter((it) => !here || !it.pageKey || it.pageKey === here);
   const hidden = new Set();
   for (const it of items) {
     if (it.hls?.isMaster) {
@@ -375,8 +392,15 @@ chrome.webRequest.onHeadersReceived.addListener(
   ['responseHeaders'],
 );
 
+chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
+  if (d.frameId !== 0) return;
+  tabPageKey.set(d.tabId, pageKeyOf(d.url));
+  updateBadge(d.tabId);
+});
+
 chrome.webNavigation.onCommitted.addListener(async (d) => {
   if (d.frameId !== 0) return;
+  tabPageKey.set(d.tabId, pageKeyOf(d.url));
   await ready;
   tabItems.delete(d.tabId);
   await persistTab(d.tabId);
@@ -384,6 +408,7 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  tabPageKey.delete(tabId);
   await ready;
   tabItems.delete(tabId);
   chrome.storage.session.remove(`items:${tabId}`);
@@ -502,7 +527,7 @@ async function startHls(item, title, variantUrl) {
   return job;
 }
 
-function startHelper({ url, referer, title, quality, cookies, itemKey, named }) {
+function startHelper({ url, referer, title, quality, cookies, itemKey, named, subs }) {
   const job = newJob({ title: safeName(title), itemKey, via: 'helper', kind: 'helper', detail: 'Starting helper' });
   let port;
   try {
@@ -514,9 +539,13 @@ function startHelper({ url, referer, title, quality, cookies, itemKey, named }) 
   helperPorts.set(job.id, port);
   port.onMessage.addListener((m) => {
     if (m.type === 'progress') {
-      updateJob(job.id, { percent: m.percent ?? 0, detail: [m.speed, m.eta && `ETA ${m.eta}`].filter(Boolean).join(' · ') || 'Downloading' }, false);
+      const detail = m.note || [m.speed, m.eta && `ETA ${m.eta}`].filter(Boolean).join(' · ') || 'Downloading';
+      updateJob(job.id, { percent: m.percent ?? jobs.get(job.id)?.percent ?? 0, detail }, false);
     } else if (m.type === 'done') {
-      finishJob(job.id, { filename: m.path, detail: m.existed ? 'Already saved earlier' : 'Saved' });
+      const bits = [m.existed ? 'Already saved earlier' : 'Saved'];
+      if (m.subs?.length) bits.push(`${m.subs.length} subtitle file${m.subs.length > 1 ? 's' : ''}`);
+      if (m.notes?.length) bits.push(...m.notes);
+      finishJob(job.id, { filename: m.path, detail: bits.join(' · ') });
       helperPorts.delete(job.id);
       port.disconnect();
     } else if (m.type === 'error') {
@@ -529,11 +558,17 @@ function startHelper({ url, referer, title, quality, cookies, itemKey, named }) 
     helperPorts.delete(job.id);
     failJob(job.id, chrome.runtime.lastError?.message || 'Helper closed unexpectedly');
   });
-  port.postMessage({ cmd: 'download', id: job.id, url, referer, quality, cookies: !!cookies, title, named: !!named });
+  port.postMessage({ cmd: 'download', id: job.id, url, referer, quality, cookies: !!cookies, title, named: !!named, subs });
   return job;
 }
 
-async function startDownload({ tabId, itemKey, variantUrl, quality, cookies }) {
+// YouTube's stream addresses are signed and expire quickly, and carry no subtitle information.
+// yt-dlp does far better with the page address, so use that for Google's video hosts.
+function helperUrlFor(item) {
+  return /(^|\.)googlevideo\.com$/i.test(hostOf(item.url)) && isHttp(item.pageUrl) ? item.pageUrl : item.url;
+}
+
+async function startDownload({ tabId, itemKey, variantUrl, quality, cookies, subs }) {
   await ready;
   const item = tabItems.get(tabId)?.get(itemKey);
   if (!item) throw new Error('That video is no longer in the list. Press Force detect.');
@@ -551,7 +586,7 @@ async function startDownload({ tabId, itemKey, variantUrl, quality, cookies }) {
     const needsHelper = hls?.live || variant?.separateAudio;
     if (needsHelper) {
       const hs = await helperState();
-      if (hs.state === 'ok') return startHelper({ url: item.url, referer: item.referer, title, quality: quality || 'best', cookies, itemKey, named: true });
+      if (hs.state === 'ok') return startHelper({ url: helperUrlFor(item), referer: item.referer, title, quality: quality || 'best', cookies, itemKey, named: true, subs });
       throw new Error(hls.live ? 'Live streams need the helper app, which is not set up.' : 'This quality keeps audio in a separate file, which needs the helper app. Pick another quality or set up the helper.');
     }
     return startHls(item, title, variantUrl);
@@ -560,10 +595,10 @@ async function startDownload({ tabId, itemKey, variantUrl, quality, cookies }) {
   // dash
   const hs = await helperState();
   if (hs.state !== 'ok') throw new Error('DASH streams need the helper app, which is not set up.');
-  return startHelper({ url: item.url, referer: item.referer, title, quality: quality || 'best', cookies, itemKey, named: true });
+  return startHelper({ url: helperUrlFor(item), referer: item.referer, title, quality: quality || 'best', cookies, itemKey, named: true, subs });
 }
 
-async function startPageDownload({ tabId, quality, cookies }) {
+async function startPageDownload({ tabId, quality, cookies, subs }) {
   const tab = await chrome.tabs.get(tabId);
   if (!isHttp(tab.url)) throw new Error('This page cannot be downloaded.');
   await ready;
@@ -571,7 +606,7 @@ async function startPageDownload({ tabId, quality, cookies }) {
   if (locked) throw new Error(`The video on this page is copy-protected (${locked}). This tool does not bypass copy protection.`);
   const hs = await helperState();
   if (hs.state !== 'ok') throw new Error('The helper app is not set up.');
-  return startHelper({ url: tab.url, referer: tab.url, title: tab.title, quality: quality || 'best', cookies, itemKey: 'page' });
+  return startHelper({ url: tab.url, referer: tab.url, title: tab.title, quality: quality || 'best', cookies, itemKey: 'page', subs });
 }
 
 async function cancelJob(id) {
@@ -654,6 +689,9 @@ async function handle(msg, sender) {
 
     // from popup
     case 'list': {
+      try {
+        tabPageKey.set(msg.tabId, pageKeyOf((await chrome.tabs.get(msg.tabId)).url));
+      } catch {}
       const items = annotate(visibleItems(msg.tabId));
       const main = items.filter((it) => !it.minor);
       // Sites that stream with DASH keep picture and sound in separate files.

@@ -92,3 +92,7 @@ summary { cursor: pointer; color: var(--muted); }
 .update-inline { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; }
 .update-inline p { margin: 0 0 6px; }
 .update-inline code { display: block; padding: 6px 8px; background: var(--surface); border-radius: 6px; user-select: all; word-break: break-all; }
+
+.subs { margin-top: 8px; }
+#sub-langs { flex: none; width: 110px; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+#sub-hint { margin-top: 4px; }

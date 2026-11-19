@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Video Download Helper",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "description": "Finds videos on the page you are viewing and saves them with one click. Direct files and HLS in the browser, optional local yt-dlp helper for the rest.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwqHqyC1NUfQWhYeJriHENe3rDs2VFsQE80tFkO9enz32DidK0AC+HLMhBAuVp7uAOlOG2MDsuUMh2LFqS1HqLvi1La/zMj/Ea3yK4+2VF+u7RwZsjCvUnvzvB7AFIPv2MELWKczEPzjlfknNNry04D+3qFMhoG5yEbqK9hjnQOY0xbVTI9EOWbDLeHYR9Ac2ZUmGJrn5qhpWTHwVhsBKaHN/1SUON7wc3/XqPDK107sLdwNoASRJCtner25A+b1c5nZg0W2J54/rmkwYr3xZimaGNOOdDbF1aDCPu/joVUVJIPO4QZAwPv/aU89HDAPOi+jW39wVw7ZBdAMlbgXJVQIDAQAB",
   "minimum_chrome_version": "116",

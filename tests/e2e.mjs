@@ -288,6 +288,13 @@ try {
   const masterSep = qa.items.find((i) => i.url.endsWith('master_sep.m3u8'));
   check('a rendition with the same length as a master is tucked away, not deleted', /part of another stream/.test(other?.minor || '') && masterSep && !masterSep.minor, JSON.stringify([other?.minor, masterSep?.minor]));
 
+  // single page app: a second video on the same tab replaces the first one in the list
+  await cdp.send('Target.createTarget', { url: `${BASE}/spa.html?v=A` });
+  await sleep(6000);
+  const spaTabId = await evalIn(cdp, popupId, `chrome.tabs.query({}).then(ts => ts.find(t => t.url.includes('/spa.html'))?.id)`);
+  const spa = await call({ type: 'list', tabId: spaTabId });
+  check('after switching video on one page, only the new video is listed', spa.items.some((i) => i.url.endsWith('spa_b.m3u8')) && !spa.items.some((i) => i.url.endsWith('spa_a.m3u8')), JSON.stringify(spa.items.map((i) => i.url)));
+
   // with the helper connected, cards must not still say it is needed
   const { targetId: cardsId } = await cdp.send('Target.createTarget', { url: `chrome-extension://${EXT_ID}/popup.html?tab=${qaTabId}` });
   await sleep(2500);

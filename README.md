@@ -30,6 +30,8 @@ Press Update now, the extension reloads itself on the new version. No helper? Th
 - Streams that use real DRM (Widevine, FairPlay, PlayReady, SAMPLE-AES) are shown as "protected" and refused. There is no bypass.
 - Groups a stream's picture, sound and playlist files into one entry, and hides previews, ads and short clips (one click shows them).
 - Optional helper (yt-dlp + ffmpeg) for what a browser cannot do: YouTube-style sites, DASH streams, live streams, very big files, HLS with a separate audio file.
+- Subtitles for YouTube and other yt-dlp sites (needs the helper): save them as `.srt` files, put them inside the video, or download subtitles only. Pick languages by code, for example `en,vi,th`. Auto-generated captions are included.
+- YouTube needs a JavaScript runtime for yt-dlp. The installer adds deno if you have neither deno nor node.
 - Files land in `Downloads/VideoHelper/`. Each finished download has a Show in folder link.
 - Also: toolbar badge count, Force detect, right-click "Download this video", finish notification, recent history.
 
@@ -40,7 +42,8 @@ Press Update now, the extension reloads itself on the new version. No helper? Th
 3. Press Download. Progress shows under Downloads in the popup.
 4. Nothing found? Press Force detect.
 5. With the helper enabled, "Whole page (yt-dlp)" downloads the page's video even when the extension could not see the file.
-   "Use my Chrome login" passes your Chrome cookies to yt-dlp (macOS will ask for Keychain access).
+   "Use my Chrome login" passes your Chrome cookies to yt-dlp (macOS will ask for Keychain access). While Chrome is open it often locks its cookie file; the helper then carries on without the login and says so.
+6. Subtitles: pick an option under Whole page and type language codes (`en,vi`). "Subtitles only" saves just the `.srt` files.
 
 ## Known limits
 
