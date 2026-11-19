@@ -71,6 +71,14 @@ def run_installer(env):
     return subprocess.run(cmd, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=300)
 
 
+def same_path(a, b):
+    """Windows may report the same folder with a short (RUNNER~1) or long name."""
+    try:
+        return bool(a) and bool(b) and os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
 def registry_default(key_path):
     import winreg
     try:
@@ -103,11 +111,11 @@ with tempfile.TemporaryDirectory() as tmp:
         ext_id = (ROOT / "extension-id.txt").read_text().strip()
         if WIN:
             manifest_file = dest / "com.sang.video_helper.json"
-            check("browser registry key points at the manifest", registry_default(REG_KEY) == str(manifest_file), registry_default(REG_KEY))
+            check("browser registry key points at the manifest", same_path(registry_default(REG_KEY), manifest_file), registry_default(REG_KEY))
         else:
             manifest_file = home / "Library/Application Support/Google/Chrome/NativeMessagingHosts/com.sang.video_helper.json"
         manifest = json.loads(manifest_file.read_text(encoding="utf-8")) if manifest_file.exists() else {}
-        check("registration points at the installed launcher", manifest.get("path") == str(launcher_path), manifest)
+        check("registration points at the installed launcher", same_path(manifest.get("path"), launcher_path), manifest)
         check("registration only allows this extension", manifest.get("allowed_origins") == [f"chrome-extension://{ext_id}/"], manifest)
 
         launcher = [str(launcher_path)]
