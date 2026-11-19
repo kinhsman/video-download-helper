@@ -306,7 +306,15 @@ function renderHelper() {
   f.replaceChildren();
   $('page-dl').hidden = helper.state !== 'ok';
   if (helper.state === 'ok') {
-    f.append(`Helper connected. yt-dlp ${helper.ytdlp || '?'}${helper.ffmpeg ? ', ffmpeg ok' : ', ffmpeg missing'}.`);
+    const yt = helper.ytdlp ? `yt-dlp ${helper.ytdlp}` : helper.ytdlp_path ? 'yt-dlp found but slow to answer' : 'yt-dlp not found';
+    const ff = helper.ffmpeg ? 'ffmpeg ok' : 'ffmpeg not found';
+    f.append(`Helper connected. ${yt}, ${ff}.`);
+    if (!helper.ytdlp_path || !helper.ffmpeg) {
+      f.append(
+        el('div', {}, `Missing tools are installed by the install command. Run it again in ${isWindows ? 'PowerShell' : 'Terminal'}, then reopen:`),
+        el('code', {}, installCmd()),
+      );
+    }
   } else if (helper.state === 'no-permission') {
     f.append(
       'Optional helper for YouTube-style sites and DASH. ',

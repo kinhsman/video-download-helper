@@ -92,12 +92,25 @@ def is_http(url):
         return False
 
 
+def find_tool(name):
+    """Where the installer found the tool (tools.json), else wherever this process can see it.
+    The browser's own PATH can be older than the installer's, so the remembered path wins."""
+    try:
+        remembered = json.loads((ROOT / "tools.json").read_text(encoding="utf-8")).get(name)
+        if remembered and Path(remembered).exists():
+            return remembered
+    except (OSError, ValueError):
+        pass
+    return shutil.which(name)
+
+
 def tool_version(cmd):
-    exe = shutil.which(cmd)
+    exe = find_tool(cmd)
     if not exe:
         return None
     try:
-        out = subprocess.run([exe, "--version" if cmd == "yt-dlp" else "-version"], capture_output=True, text=True, timeout=10, creationflags=NOWINDOW).stdout
+        # The first run of a freshly installed yt-dlp.exe can take a while (unpacking, virus scan).
+        out = subprocess.run([exe, "--version" if cmd == "yt-dlp" else "-version"], capture_output=True, text=True, timeout=45, creationflags=NOWINDOW).stdout
         return out.splitlines()[0].strip() if out else "unknown"
     except Exception:
         return None
@@ -141,7 +154,7 @@ def build_command(req, path_file):
     quality = req.get("quality", "best")
     if quality not in FORMATS:
         raise ValueError("Unknown quality.")
-    ytdlp = shutil.which("yt-dlp")
+    ytdlp = find_tool("yt-dlp")
     if not ytdlp:
         raise ValueError("yt-dlp is not installed (brew install yt-dlp).")
 
@@ -158,7 +171,7 @@ def build_command(req, path_file):
         "--merge-output-format", "mp4",
         *FORMATS[quality],
     ]
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = find_tool("ffmpeg")
     if ffmpeg:
         cmd += ["--ffmpeg-location", ffmpeg]
     referer = req.get("referer", "")
@@ -350,7 +363,15 @@ def main():
             break
         cmd = msg.get("cmd")
         if cmd == "ping":
-            send({"type": "pong", "ytdlp": tool_version("yt-dlp"), "ffmpeg": bool(shutil.which("ffmpeg")), "version": installed_version(), "installed": is_installed_copy()})
+            send({
+                "type": "pong",
+                "ytdlp": tool_version("yt-dlp"),
+                "ytdlp_path": find_tool("yt-dlp"),
+                "ffmpeg": bool(find_tool("ffmpeg")),
+                "ffmpeg_path": find_tool("ffmpeg"),
+                "version": installed_version(),
+                "installed": is_installed_copy(),
+            })
             # a ping connection is short lived; keep looping until Chrome disconnects
         elif cmd == "download" and current is None:
             current = Download(msg)

@@ -242,6 +242,17 @@ try {
   const hs = await call({ type: 'helper-state' });
   check('helper answers ping through Chrome native messaging', hs.state === 'ok' && !!hs.ytdlp, JSON.stringify(hs));
 
+  // the awkward page: og:video that is an embed page, and an unlisted rendition of a master playlist
+  await cdp.send('Target.createTarget', { url: `${BASE}/qa.html` });
+  await sleep(3500);
+  const qaTabId = await evalIn(cdp, popupId, `chrome.tabs.query({}).then(ts => ts.find(t => t.url.endsWith('/qa.html'))?.id)`);
+  const qa = await call({ type: 'list', tabId: qaTabId });
+  console.log('qa page:', qa.items.map((i) => i.url.replace(BASE, '')));
+  check('an og:video that is an embed page is not listed as a video file', !qa.items.some((i) => i.url.includes('/embed/')), JSON.stringify(qa.items.map((i) => i.url)));
+  const other = qa.items.find((i) => i.url.endsWith('qa/other.m3u8'));
+  const masterSep = qa.items.find((i) => i.url.endsWith('master_sep.m3u8'));
+  check('a rendition with the same length as a master is tucked away, not deleted', /part of another stream/.test(other?.minor || '') && masterSep && !masterSep.minor, JSON.stringify([other?.minor, masterSep?.minor]));
+
   // whole-page download on a page with no protected video
   await cdp.send('Target.createTarget', { url: `${BASE}/plain.html` });
   await sleep(1500);

@@ -35,6 +35,17 @@ if [ "$REFRESH" = 0 ] && [ -z "${VDH_SKIP_TOOLS:-}" ]; then
   done
 fi
 
+# Remember where the tools are, because the browser's own PATH can be older than ours.
+if [ "$REFRESH" = 0 ]; then
+  "$PY" - "$ROOT/tools.json" <<'PYTOOLS'
+import json, shutil, sys
+found = {n: shutil.which(n) for n in ("yt-dlp", "ffmpeg") if shutil.which(n)}
+json.dump(found, open(sys.argv[1], "w"))
+for n in ("yt-dlp", "ffmpeg"):
+    print(f"Found {n}: {found[n]}" if n in found else f"{n} not found (only needed for YouTube-style sites).")
+PYTOOLS
+fi
+
 # Launcher so Chrome (which starts us with a bare PATH) always finds python.
 WRAPPER="$HERE/run_host.sh"
 cat > "$WRAPPER" <<EOF

@@ -333,12 +333,19 @@ const MINOR_SIZE_RATIO = 0.1;
 
 function annotate(items) {
   const dur = (it) => it.hls?.duration || it.dash?.duration || 0;
+  // Another playlist on the same host with the same length as a master playlist is probably one of its
+  // renditions. It is tucked away with the other minor items, not deleted, in case it is a real video.
+  const masters = items.filter((it) => it.hls?.isMaster && it.hls.duration > 0);
+  const looksLikeRendition = (it) =>
+    it.kind === 'hls' && it.hls && !it.hls.isMaster && it.hls.duration > 0 &&
+    masters.some((m) => hostOf(m.url) === hostOf(it.url) && Math.abs(m.hls.duration - it.hls.duration) < 2);
   const longest = Math.max(0, ...items.map(dur));
   const maxFile = Math.max(0, ...items.filter((i) => i.kind === 'file').map((i) => i.size || 0));
   return items.map((it) => {
     const d = dur(it);
     let minor = null;
-    if (d > 0 && d < MINOR_MAX_SECONDS && longest >= MAIN_MIN_SECONDS) minor = 'short clip';
+    if (looksLikeRendition(it)) minor = 'looks like part of another stream';
+    else if (d > 0 && d < MINOR_MAX_SECONDS && longest >= MAIN_MIN_SECONDS) minor = 'short clip';
     else if (it.kind === 'file' && it.size > 0 && maxFile >= MAIN_MIN_BYTES && it.size < maxFile * MINOR_SIZE_RATIO) minor = 'much smaller than the main video';
     const needsHelper = it.kind === 'dash' || !!it.hls?.live || !!(it.hls?.variants?.length && it.hls.variants.every((v) => v.separateAudio));
     return { ...it, protectedReason: protectedReasonOf(it), minor, needsHelper };
@@ -609,7 +616,10 @@ async function handle(msg, sender) {
     case 'dom-video': {
       const tabId = sender.tab?.id;
       if (tabId === undefined || !isHttp(msg.url)) return;
-      const kind = classify(msg.url, msg.mime) || 'file';
+      const known = classify(msg.url, msg.mime);
+      // og:video usually points at an embed web page (YouTube does), not at a video file. Only keep it when it looks like media.
+      if (msg.fromMeta && !known) return;
+      const kind = known || 'file';
       await addItem(tabId, { url: msg.url, kind, mime: msg.mime, size: 0, referer: msg.frameUrl, source: 'dom' });
       return;
     }

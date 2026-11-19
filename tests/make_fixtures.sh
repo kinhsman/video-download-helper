@@ -60,7 +60,7 @@ def media(name, live=False, n=160):
         body += "#EXT-X-ENDLIST\n"
     open(f"qa/{name}", "w").write(body)
 media("v1080.m3u8"); media("v720.m3u8"); media("audio.m3u8"); media("live.m3u8", live=True, n=6)
-media("mixed_a.m3u8"); media("mixed_b.m3u8")
+media("mixed_a.m3u8"); media("mixed_b.m3u8"); media("other.m3u8")
 open("qa/master_sep.m3u8", "w").write('''#EXTM3U
 #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",DEFAULT=YES,URI="audio.m3u8"
 #EXT-X-STREAM-INF:BANDWIDTH=3700000,RESOLUTION=1920x1080,AUDIO="aud"
@@ -77,12 +77,15 @@ mixed_b.m3u8
 open("qa/garbage.m3u8", "w").write("<html>this is not a playlist</html>")
 open("qa.html", "w", encoding="utf-8").write('''<!doctype html>
 <meta charset="utf-8">
+<meta property="og:video:url" content="http://127.0.0.1:8791/embed/TdFBnN-M-5Y">
 <title>Is QQQ Repeating 2018? 5 AI Stocks Showing Strength (Options With Ryan) ปาฏิหาริย์ข้ามกาลเวลา</title>
 <h1>VDH QA page</h1>
 <script>
   for (const f of ['master_sep', 'master_mixed', 'live', 'garbage']) fetch('qa/' + f + '.m3u8').then(r => r.text());
   // a variant requested with a different query string than the master lists
   fetch('qa/mixed_a.m3u8?token=zzz').then(r => r.text());
+  // a rendition the master does not list by this address: same length as the master, same host
+  fetch('qa/other.m3u8').then(r => r.text());
 </script>
 ''')
 PY

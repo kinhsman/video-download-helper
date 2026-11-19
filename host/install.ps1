@@ -95,6 +95,21 @@ if (-not $Refresh -and -not $env:VDH_SKIP_TOOLS) {
   }
 }
 
+# --- remember where the tools are, because the browser's own PATH can be older than ours ---
+if (-not $Refresh) {
+  $found = [ordered]@{}
+  foreach ($name in @('yt-dlp', 'ffmpeg')) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) { $found[$name] = $cmd.Source }
+    else {
+      $link = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\$name.exe"
+      if (Test-Path $link) { $found[$name] = $link }
+    }
+    if ($found.Contains($name)) { Write-Host "Found ${name}: $($found[$name])" } else { Write-Host "${name} not found (only needed for YouTube-style sites)." }
+  }
+  [System.IO.File]::WriteAllText((Join-Path $Root 'tools.json'), ($found | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+}
+
 # --- launcher: browsers cannot start a .py directly, so point them at a small .bat ---
 $Launcher = Join-Path $Root 'run_host.bat'
 $utf8 = New-Object System.Text.UTF8Encoding($false)

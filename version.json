@@ -1,4 +1,4 @@
 {
-  "version": "0.3.1",
-  "notes": "Popup fixes: expandable titles, clearer cards."
+  "version": "0.3.2",
+  "notes": "Fixes duplicate cards on YouTube, helper finds yt-dlp and ffmpeg reliably."
 }

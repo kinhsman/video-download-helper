@@ -7,20 +7,20 @@ const MAX_URLS = 50;
 function candidates() {
   const urls = [];
   for (const v of document.querySelectorAll('video')) {
-    if (v.currentSrc) urls.push([v.currentSrc, '']);
-    if (v.src) urls.push([v.src, '']);
-    for (const s of v.querySelectorAll('source[src]')) urls.push([s.src, s.type || '']);
+    if (v.currentSrc) urls.push([v.currentSrc, '', false]);
+    if (v.src) urls.push([v.src, '', false]);
+    for (const s of v.querySelectorAll('source[src]')) urls.push([s.src, s.type || '', false]);
   }
   for (const sel of ['meta[property="og:video"]', 'meta[property="og:video:url"]', 'meta[property="og:video:secure_url"]', 'meta[name="twitter:player:stream"]']) {
     for (const m of document.querySelectorAll(sel)) {
-      if (m.content) urls.push([m.content, '']);
+      if (m.content) urls.push([m.content, '', true]);
     }
   }
   return urls;
 }
 
 function scan() {
-  for (const [raw, mime] of candidates()) {
+  for (const [raw, mime, fromMeta] of candidates()) {
     if (seen.size >= MAX_URLS) return;
     let url;
     try {
@@ -30,7 +30,7 @@ function scan() {
     }
     if (!/^https?:/i.test(url) || seen.has(url)) continue;
     seen.add(url);
-    chrome.runtime.sendMessage({ type: 'dom-video', url, mime, frameUrl: location.href }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'dom-video', url, mime, fromMeta, frameUrl: location.href }).catch(() => {});
   }
 }
 
