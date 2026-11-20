@@ -29,6 +29,7 @@ Press Update now: it swaps the extension and helper files, installs any missing 
 - HLS streams are downloaded, joined and converted to mp4 inside the browser. Normal AES-128 encrypted HLS works.
 - Streams that use real DRM (Widevine, FairPlay, PlayReady, SAMPLE-AES) are shown as "protected" and refused. There is no bypass.
 - Groups a stream's picture, sound and playlist files into one entry, and hides previews, ads and short clips (one click shows them).
+- Sites that play picture and sound as two separate files (Bilibili, for example) show as one card, "Picture + sound, 2 files". The helper downloads both and joins them with ffmpeg into one mp4. It needs the video to have played for a few seconds so both files were requested.
 - Optional helper (yt-dlp + ffmpeg) for what a browser cannot do: YouTube-style sites, DASH streams, live streams, very big files, HLS with a separate audio file.
 - Subtitles for YouTube and other yt-dlp sites (needs the helper): save them as `.srt` files, put them inside the video, or download subtitles only. Pick languages by code, for example `en,vi,th`. Auto-generated captions are included.
 - YouTube needs a JavaScript runtime for yt-dlp. The installer adds deno if you have neither deno nor node.
@@ -92,7 +93,7 @@ Bump `version` in `extension/manifest.json` and `version.json` (they must match)
 
 ```bash
 bash tests/make_fixtures.sh                       # builds test media
-python3 -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures &
+python3 tests/range_server.py 8791 tests/fixtures &
 node tests/test_parser.mjs                        # playlist parser
 python3 tests/test_host.py                        # helper protocol and yt-dlp runs
 python3 tests/test_install.py                     # installer and self-update in a throwaway HOME

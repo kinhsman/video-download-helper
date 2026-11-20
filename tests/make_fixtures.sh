@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds local test media: a plain mp4, a plain HLS stream, an AES-128 encrypted HLS stream,
-# and a test page that loads them. Serve with: python3 -m http.server 8791 --directory tests/fixtures
+# and a test page that loads them. Serve with: python3 tests/range_server.py 8791 tests/fixtures
 set -euo pipefail
 PYBIN="$(command -v python3 || command -v python)"
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH"
@@ -61,6 +61,22 @@ head -c 25000000 /dev/urandom > big.mp4
 
 echo '{"version":"99.0.0","notes":"Test update."}' > newer-version.json
 echo "{\"version\":\"$("${PYBIN:-python3}" -c 'import json;print(json.load(open("../../extension/manifest.json"))["version"])')\",\"notes\":\"\"}" > same-version.json
+
+# Bilibili-style: picture and sound as two separate fragmented mp4 files named .m4s, fetched in byte ranges
+mkdir -p tracks
+ffmpeg -y -loglevel error -i sample.mp4 -an -c:v copy -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 tracks/video.m4s
+ffmpeg -y -loglevel error -i sample.mp4 -vn -c:a copy -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 tracks/audio.m4s
+head -c 50000 /dev/urandom > tracks/seg1.m4s   # a small stream chunk that must be ignored
+cat > tracks.html <<'TRACKSEOF'
+<!doctype html>
+<meta charset="utf-8">
+<title>Split tracks page</title>
+<script>
+  // what a player does: ask for a slice of each file
+  for (const f of ['tracks/video.m4s', 'tracks/audio.m4s']) fetch(f, { headers: { Range: 'bytes=0-65535' } }).then(r => r.arrayBuffer());
+  fetch('tracks/seg1.m4s').then(r => r.arrayBuffer());
+</script>
+TRACKSEOF
 
 # QA page: awkward cases for the popup (long non-Latin title, separate-audio streams, live, unreadable playlist)
 mkdir -p qa

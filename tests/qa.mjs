@@ -2,7 +2,7 @@
 // the helper enabled, and saves screenshots. Look at them, this does not assert.
 //
 //   bash tests/make_fixtures.sh
-//   python3 -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures &
+//   python3 tests/range_server.py 8791 tests/fixtures &
 //   OUT=/tmp/qa node tests/qa.mjs
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, cpSync, readFileSync, writeFileSync } from 'node:fs';

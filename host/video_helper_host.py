@@ -6,6 +6,7 @@ Chrome starts one copy of this script per connection. Messages are JSON with a
 
 Requests:  {"cmd": "ping"}
            {"cmd": "download", "id", "url", "referer", "quality", "cookies", "title", "named", "subs": {"mode", "langs"}}
+           {"cmd": "merge_tracks", "id", "video_url", "audio_url", "sizes", "referer", "title"}
            {"cmd": "cancel", "id"}
            {"cmd": "reveal", "path"}        show a saved file in Finder or Explorer
            {"cmd": "update"}                download the latest release over the installed copy
@@ -30,7 +31,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
-OUT_DIR = Path.home() / "Downloads" / "VideoHelper"
+OUT_DIR = Path(os.environ.get("VDH_OUT_DIR") or Path.home() / "Downloads" / "VideoHelper")  # env override is for tests
 ROOT = Path(__file__).resolve().parent.parent
 INSTALL_DIR = Path.home() / ".video-download-helper"
 MAX_UPDATE_BYTES = 50 * 1024 * 1024
@@ -65,6 +66,10 @@ def dbg(*parts):
     """Debug lines go to stderr (browsers ignore it). Turn on with VDH_DEBUG=1."""
     if os.environ.get("VDH_DEBUG"):
         print("[host]", *parts, file=sys.stderr, flush=True)
+        log = os.environ.get("VDH_DEBUG_LOG")  # browsers hide a helper's stderr, so a file is easier to read
+        if log:
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(" ".join(str(p) for p in parts) + "\n")
 
 
 def send(msg):
@@ -333,6 +338,96 @@ class Download:
             self.proc.terminate()
 
 
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+MAX_TRACK_BYTES = 12 * 1024 * 1024 * 1024
+
+
+class MergeTracks:
+    """Sites like Bilibili play picture and sound as two separate files. Download both and join them with ffmpeg."""
+
+    def __init__(self, req):
+        self.id = req.get("id")
+        self.req = req
+        self.proc = None
+        self.canceled = False
+
+    def cancel(self):
+        self.canceled = True
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+
+    def _fetch(self, url, dest, label, base, total):
+        referer = self.req.get("referer", "")
+        headers = {"User-Agent": USER_AGENT}
+        if is_http(referer):
+            headers["Referer"] = referer
+            parsed = urlparse(referer)
+            headers["Origin"] = f"{parsed.scheme}://{parsed.netloc}"
+        done = 0
+        request = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(request, timeout=30) as resp, open(dest, "wb") as out:
+            while True:
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                if self.canceled:
+                    raise RuntimeError("canceled")
+                done += len(chunk)
+                if base + done > MAX_TRACK_BYTES:
+                    raise ValueError("The files are unexpectedly large.")
+                out.write(chunk)
+                send({"type": "progress", "id": self.id, "percent": min(95, int((base + done) * 95 / total)), "note": f"Downloading {label}", "speed": "", "eta": ""})
+        return done
+
+    def run(self):
+        work = None
+        try:
+            video_url = self.req.get("video_url", "")
+            audio_url = self.req.get("audio_url", "") or ""
+            if not is_http(video_url) or (audio_url and not is_http(audio_url)):
+                raise ValueError("Only http and https addresses are allowed.")
+            ffmpeg = find_tool("ffmpeg")
+            if not ffmpeg:
+                raise ValueError("ffmpeg is not installed. Run the install command again.")
+            OUT_DIR.mkdir(parents=True, exist_ok=True)
+            work = Path(tempfile.mkdtemp(prefix="vdh-tracks-"))
+            sizes = [n for n in (self.req.get("sizes") or []) if isinstance(n, (int, float)) and n > 0]
+            total = max(1, int(sum(sizes))) if sizes else 1 << 30
+            video = work / "video.bin"
+            audio = work / "audio.bin"
+            got = self._fetch(video_url, video, "picture", 0, total)
+            if audio_url:
+                self._fetch(audio_url, audio, "sound", got, max(total, got + 1))
+            if self.canceled:
+                return
+            send({"type": "progress", "id": self.id, "percent": 96, "note": "Joining picture and sound"})
+            stem = unique_base(self.req.get("title", "")) or "video"
+            out_path = OUT_DIR / f"{stem}.mp4"
+            cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(video)]
+            if audio_url:
+                cmd += ["-i", str(audio)]
+            cmd += ["-map", "0:v:0"]
+            if audio_url:
+                cmd += ["-map", "1:a:0"]
+            cmd += ["-c", "copy", "-movflags", "+faststart", str(out_path)]
+            dbg("running", cmd)
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", creationflags=NOWINDOW)
+            output = self.proc.communicate()[0] or ""
+            if self.canceled:
+                return
+            if self.proc.returncode != 0 or not out_path.exists():
+                last = [l for l in output.splitlines() if l.strip()]
+                raise ValueError(("ffmpeg could not join the files: " + (last[-1] if last else "unknown error"))[:300])
+            send({"type": "done", "id": self.id, "path": str(out_path), "subs": [], "notes": [] if audio_url else ["no sound file found"], "existed": False})
+        except Exception as e:  # noqa: BLE001
+            dbg("merge failed:", repr(e))
+            if not self.canceled:
+                send({"type": "error", "id": self.id, "message": str(e)[:300]})
+        finally:
+            if work:
+                shutil.rmtree(work, ignore_errors=True)
+
+
 def installed_version():
     try:
         return json.loads((ROOT / "version.json").read_text())["version"]
@@ -499,6 +594,9 @@ def main():
             # a ping connection is short lived; keep looping until Chrome disconnects
         elif cmd == "download" and current is None:
             current = Download(msg)
+            threading.Thread(target=current.run, daemon=True).start()
+        elif cmd == "merge_tracks" and current is None:
+            current = MergeTracks(msg)
             threading.Thread(target=current.run, daemon=True).start()
         elif cmd == "cancel" and current:
             current.cancel()

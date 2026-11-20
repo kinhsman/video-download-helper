@@ -3,7 +3,7 @@
 // stream and an AES-128 HLS stream through the extension.
 //
 //   bash tests/make_fixtures.sh
-//   python3 -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures &
+//   python3 tests/range_server.py 8791 tests/fixtures &
 //   node tests/e2e.mjs
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, existsSync, rmSync, mkdirSync, cpSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
@@ -45,6 +45,11 @@ const check = (name, ok, extra = '') => {
   if (!ok) failed++;
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Keep helper output out of ~/Downloads: macOS asks before a browser's child process may list that folder.
+const helperOut = join(profile, 'helper-out');
+mkdirSync(helperOut);
+process.env.VDH_OUT_DIR = helperOut;
 
 const chrome = spawn(CHROME, [
   `--remote-debugging-port=${PORT}`,
@@ -294,6 +299,30 @@ try {
   const spaTabId = await evalIn(cdp, popupId, `chrome.tabs.query({}).then(ts => ts.find(t => t.url.includes('/spa.html'))?.id)`);
   const spa = await call({ type: 'list', tabId: spaTabId });
   check('after switching video on one page, only the new video is listed', spa.items.some((i) => i.url.endsWith('spa_b.m3u8')) && !spa.items.some((i) => i.url.endsWith('spa_a.m3u8')), JSON.stringify(spa.items.map((i) => i.url)));
+
+  // Bilibili-style page: picture and sound are two .m4s files, joined by the helper into one mp4
+  await cdp.send('Target.createTarget', { url: `${BASE}/tracks.html` });
+  await sleep(5000);
+  const trkTabId = await evalIn(cdp, popupId, `chrome.tabs.query({}).then(ts => ts.find(t => t.url.endsWith('/tracks.html'))?.id)`);
+  const trk = await call({ type: 'list', tabId: trkTabId });
+  const trkItem = trk.items.find((i) => i.kind === 'tracks');
+  check('two .m4s files with byte-range answers become one picture + sound card', !!trkItem && !!trkItem.audioUrl && trkItem.url.endsWith('video.m4s') && trkItem.audioUrl.endsWith('audio.m4s'), JSON.stringify(trk.items.map((i) => [i.kind, i.url])));
+  check('a small .m4s stream chunk is not listed', !trk.items.some((i) => (i.url || '').endsWith('seg1.m4s')) && trk.items.length === 1, JSON.stringify(trk.items.map((i) => i.url)));
+  if (trkItem) {
+    const { job: tj, error: te } = await call({ type: 'download', tabId: trkTabId, itemKey: trkItem.key });
+    check('joining starts via the helper', !!tj, te);
+    if (tj) {
+      const tdone = await waitJob(tj.id);
+      const dbgJobs = tdone ? null : await evalIn(cdp, popupId, `chrome.storage.session.get('jobs').then(r => r.jobs.filter(j => j.itemKey === 'tracks'))`);
+      check('joined file is saved', tdone?.status === 'done' && /\.mp4$/.test(tdone.filename || ''), JSON.stringify(tdone ?? dbgJobs));
+      if (tdone?.filename) {
+        const tinfo = probe(tdone.filename);
+        const ttypes = (tinfo?.streams || []).map((x) => x.codec_type).sort().join(',');
+        check('joined file has picture and sound and the right length', ttypes === 'audio,video' && parseFloat(tinfo?.format?.duration) > 18, JSON.stringify(tinfo));
+        try { rmSync(tdone.filename); } catch {}
+      }
+    }
+  }
 
   // with the helper connected, cards must not still say it is needed
   const { targetId: cardsId } = await cdp.send('Target.createTarget', { url: `chrome-extension://${EXT_ID}/popup.html?tab=${qaTabId}` });

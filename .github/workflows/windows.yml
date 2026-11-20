@@ -47,7 +47,7 @@ jobs:
         timeout-minutes: 3
         run: |
           bash tests/make_fixtures.sh
-          nohup python -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures > server.log 2>&1 &
+          nohup python tests/range_server.py 8791 tests/fixtures > server.log 2>&1 &
           sleep 3
           mkdir -p dbg && cd dbg
           timeout 90 yt-dlp -v --no-playlist -o "x.%(ext)s" http://127.0.0.1:8791/sample.mp4 || echo "yt-dlp exit $?"
@@ -59,7 +59,7 @@ jobs:
         env:
           VDH_DEBUG: '1'
         run: |
-          nohup python -m http.server 8791 --bind 127.0.0.1 --directory tests/fixtures > server2.log 2>&1 &
+          nohup python tests/range_server.py 8791 tests/fixtures > server2.log 2>&1 &
           sleep 3
           curl -sI http://127.0.0.1:8791/sample.mp4 | head -1
           python -u tests/test_host.py

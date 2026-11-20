@@ -2,7 +2,7 @@
 """Talks to the helper the way Chrome does (length-prefixed JSON over stdio).
 
 Needs the fixtures server running:
-    bash tests/make_fixtures.sh && python3 -m http.server 8791 --directory tests/fixtures
+    bash tests/make_fixtures.sh && python3 tests/range_server.py 8791 tests/fixtures
 Run:  python3 tests/test_host.py
 """
 import json
@@ -87,6 +87,18 @@ r = talk({"cmd": "reveal", "path": "/etc/hosts"})
 check("reveal refuses files outside the VideoHelper folder", r and r[-1]["type"] == "error", r)
 r = talk({"cmd": "reveal", "path": str(Path.home() / "Downloads" / "VideoHelper" / "nope.mp4")})
 check("reveal reports a missing file", r and r[-1]["type"] == "error" and "moved or deleted" in r[-1]["message"], r)
+
+# --- picture and sound as two files, joined with ffmpeg (needs the range server's tracks fixture)
+r = talk({"cmd": "merge_tracks", "id": "m1", "video_url": "http://127.0.0.1:8791/tracks/video.m4s", "audio_url": "http://127.0.0.1:8791/tracks/audio.m4s", "referer": "http://127.0.0.1:8791/tracks.html", "title": "VDH Merge Test", "sizes": [2000000, 170000]})
+joined = Path(r[-1]["path"]) if r and r[-1]["type"] == "done" else None
+check("merge_tracks joins picture and sound into one mp4", bool(joined) and joined.exists() and joined.name == "VDH Merge Test.mp4", r[-3:] if r else r)
+ffprobe = shutil.which("ffprobe") or str(Path.home() / ".local" / "bin" / "ffprobe")
+if joined and joined.exists():
+    out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(joined)], capture_output=True, text=True).stdout.split()
+    check("the joined file has both a picture and a sound stream", sorted(out) == ["audio", "video"], out)
+    joined.unlink()
+r = talk({"cmd": "merge_tracks", "id": "m2", "video_url": "file:///etc/passwd", "audio_url": "", "title": "x"})
+check("merge_tracks refuses non-http addresses", r and r[-1]["type"] == "error", r)
 
 # --- with a stand-in yt-dlp: cookie fallback, subtitles, YouTube runtime flag (not on Windows: needs a script launcher)
 if sys.platform != "win32":

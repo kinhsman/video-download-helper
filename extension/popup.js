@@ -116,7 +116,7 @@ function renderItems() {
   const box = $('list');
   box.replaceChildren();
   if (!items.length) {
-    box.append(el('div', { class: 'empty' }, 'No videos found yet. Press play on the video, then reopen this. If nothing shows, try Force detect.'));
+    box.append(el('div', { class: 'empty' }, `No videos found yet. Press play on the video, then reopen this. If nothing shows, try Force detect.${helper.state === 'ok' ? ' You can also try Download page below: yt-dlp supports many sites.' : ''}`));
     return;
   }
   const shown = items.filter((it) => showMinor || !it.minor);
@@ -152,6 +152,11 @@ function renderItems() {
           );
         }
       }
+    } else if (it.kind === 'tracks') {
+      chips.push(chip(it.audioUrl ? 'Picture + sound, 2 files' : 'Picture only so far'));
+      if (it.size) chips.push(chip(fmtBytes(it.size)));
+      if (!it.audioUrl) chips.push(chip('no sound file seen yet', 'warn'));
+      chips.push(helperChip());
     } else if (it.kind === 'dash') {
       chips.push(chip('DASH stream'));
       if (it.dash?.duration) chips.push(chip(fmtDur(it.dash.duration)));
@@ -160,7 +165,7 @@ function renderItems() {
     }
 
     // Does the chosen quality need the helper, and is the helper missing?
-    const variantNeedsHelper = () => it.kind === 'dash' || !!hls?.live || !!hls?.variants.find((v) => v.url === select?.value)?.separateAudio;
+    const variantNeedsHelper = () => it.kind === 'dash' || it.kind === 'tracks' || !!hls?.live || !!hls?.variants.find((v) => v.url === select?.value)?.separateAudio;
     const note = el('div', { class: 'note' });
     const unreadable = it.kind === 'hls' && hls && hls.error && !hls.variants.length && !hls.duration;
     const refreshBlocked = () => {

@@ -10,6 +10,7 @@ const SAVE_DIR = 'VideoHelper';
 // ---------- state ----------
 
 const tabItems = new Map(); // tabId -> Map(key -> item)
+const tabTracks = new Map(); // tabId -> Map(key -> separate picture or sound file seen on the page)
 const tabPageKey = new Map(); // tabId -> which page (or YouTube video) the tab is on right now
 const jobs = new Map(); // jobId -> job
 const helperPorts = new Map(); // jobId -> native port
@@ -20,6 +21,8 @@ const ready = (async () => {
   for (const [k, v] of Object.entries(all)) {
     if (k.startsWith('items:')) {
       tabItems.set(Number(k.slice(6)), new Map(v.map((i) => [i.key, i])));
+    } else if (k.startsWith('tracks:')) {
+      tabTracks.set(Number(k.slice(7)), new Map(v.map((t) => [t.key, t])));
     } else if (k === 'jobs') {
       for (const j of v) jobs.set(j.id, j);
     }
@@ -31,6 +34,13 @@ function persistTab(tabId) {
   const key = `items:${tabId}`;
   if (!items || !items.size) return chrome.storage.session.remove(key);
   return chrome.storage.session.set({ [key]: [...items.values()] });
+}
+
+function persistTracks(tabId) {
+  const tracks = tabTracks.get(tabId);
+  const key = `tracks:${tabId}`;
+  if (!tracks || !tracks.size) return chrome.storage.session.remove(key);
+  return chrome.storage.session.set({ [key]: [...tracks.values()] });
 }
 
 function saveJobsSoon(immediate = false) {
@@ -97,6 +107,8 @@ function classify(url, mime = '') {
   const m = mime.split(';')[0].trim().toLowerCase();
   if (/\.m3u8$/.test(path) || ['application/vnd.apple.mpegurl', 'application/x-mpegurl', 'audio/mpegurl', 'audio/x-mpegurl'].includes(m)) return 'hls';
   if (/\.mpd$/.test(path) || m === 'application/dash+xml') return 'dash';
+  // Bilibili-style sites play picture and sound as two big .m4s files fetched in byte ranges (not tiny chunks).
+  if (/\.m4s$/.test(path)) return 'track';
   if (/\.(ts|m4s|aac|cmfv|cmfa|vtt|srt)$/.test(path) || m === 'video/mp2t' || m === 'video/iso.segment') return null;
   if (m.startsWith('video/') || /\.(mp4|m4v|webm|mov|mkv|ogv|flv)$/.test(path)) return 'file';
   return null;
@@ -314,7 +326,119 @@ function protectedReasonOf(it) {
   return null;
 }
 
+async function addTrack(tabId, info) {
+  await ready;
+  if (tabId < 0) return;
+  let tracks = tabTracks.get(tabId);
+  if (!tracks) {
+    tracks = new Map();
+    tabTracks.set(tabId, tracks);
+  }
+  const key = normUrl(info.url);
+  const known = tracks.get(key);
+  if (known) {
+    known.url = info.url; // keep the freshest signed address
+    if (info.size > known.size) known.size = info.size;
+    await persistTracks(tabId);
+    return;
+  }
+  let tab = null;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {}
+  const track = {
+    key,
+    url: info.url,
+    size: info.size,
+    referer: info.referer || tab?.url || '',
+    pageUrl: tab?.url || '',
+    title: tab?.title || '',
+    pageKey: pageKeyOf(tab?.url),
+    time: Date.now(),
+    type: 'unknown',
+  };
+  tracks.set(key, track);
+  if (track.pageKey) tabPageKey.set(tabId, track.pageKey);
+  await persistTracks(tabId);
+  probeTrack(tabId, track);
+}
+
+// Reads the first bytes of the file and looks for the MP4 "hdlr" box, which says picture (vide) or sound (soun).
+async function probeTrack(tabId, track) {
+  try {
+    await ensureRefererRules([hostOf(track.url)], track.referer);
+    const res = await fetch(track.url, { headers: { Range: 'bytes=0-65535' }, cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    const reader = res.body.getReader();
+    const chunks = [];
+    let got = 0;
+    while (got < 65536) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      got += value.length;
+    }
+    reader.cancel().catch(() => {});
+    const bytes = new Uint8Array(got);
+    let off = 0;
+    for (const c of chunks) {
+      bytes.set(c, off);
+      off += c.length;
+    }
+    const at = (i, s) => [...s].every((ch, k) => bytes[i + k] === ch.charCodeAt(0));
+    for (let i = 4; i < bytes.length - 16; i++) {
+      if (at(i, 'hdlr')) {
+        // box type, 4 bytes version and flags, 4 bytes predefined, then the 4 byte handler type
+        if (at(i + 12, 'vide')) track.type = 'video';
+        else if (at(i + 12, 'soun')) track.type = 'audio';
+        break;
+      }
+    }
+  } catch (e) {
+    track.probeError = e.message;
+  }
+  await ready;
+  await persistTracks(tabId);
+  updateBadge(tabId);
+}
+
+// One card for the page: the biggest picture file plus the biggest sound file.
+function trackItem(tabId) {
+  const here = tabPageKey.get(tabId);
+  const all = [...(tabTracks.get(tabId)?.values() || [])].filter((t) => !here || !t.pageKey || t.pageKey === here);
+  const videos = all.filter((t) => t.type === 'video').sort((a, b) => b.size - a.size);
+  const audios = all.filter((t) => t.type === 'audio').sort((a, b) => b.size - a.size);
+  if (!videos.length) return null;
+  const v = videos[0];
+  const a = audios[0] || null;
+  return {
+    key: 'tracks',
+    kind: 'tracks',
+    url: v.url,
+    audioUrl: a?.url || '',
+    mime: '',
+    size: v.size + (a?.size || 0),
+    videoSize: v.size,
+    audioSize: a?.size || 0,
+    referer: v.referer,
+    pageUrl: v.pageUrl,
+    title: v.title,
+    time: v.time,
+    source: 'network',
+    hls: null,
+  };
+}
+
 function visibleItems(tabId) {
+  const track = trackItem(tabId);
+  return [...visibleStreamItems(tabId), ...(track ? [track] : [])].sort((a, b) => b.time - a.time);
+}
+
+function findItem(tabId, key) {
+  return key === 'tracks' ? trackItem(tabId) : tabItems.get(tabId)?.get(key);
+}
+
+function visibleStreamItems(tabId) {
   // Items found on an earlier video of the same tab (YouTube keeps one page) are not this video's.
   const here = tabPageKey.get(tabId);
   const items = [...(tabItems.get(tabId)?.values() || [])].filter((it) => !here || !it.pageKey || it.pageKey === here);
@@ -364,7 +488,7 @@ function annotate(items) {
     if (looksLikeRendition(it)) minor = 'looks like part of another stream';
     else if (d > 0 && d < MINOR_MAX_SECONDS && longest >= MAIN_MIN_SECONDS) minor = 'short clip';
     else if (it.kind === 'file' && it.size > 0 && maxFile >= MAIN_MIN_BYTES && it.size < maxFile * MINOR_SIZE_RATIO) minor = 'much smaller than the main video';
-    const needsHelper = it.kind === 'dash' || !!it.hls?.live || !!(it.hls?.variants?.length && it.hls.variants.every((v) => v.separateAudio));
+    const needsHelper = it.kind === 'dash' || it.kind === 'tracks' || !!it.hls?.live || !!(it.hls?.variants?.length && it.hls.variants.every((v) => v.separateAudio));
     return { ...it, protectedReason: protectedReasonOf(it), minor, needsHelper };
   });
 }
@@ -385,6 +509,13 @@ chrome.webRequest.onHeadersReceived.addListener(
     let size = parseInt(h('content-length'), 10) || 0;
     const range = h('content-range').match(/\/(\d+)$/);
     if (range) size = parseInt(range[1], 10);
+    if (kind === 'track') {
+      // A byte-range answer of a big file is a whole track. A plain small answer is just one stream chunk.
+      if ((range && size >= 100 * 1024) || size >= 20 * 1024 * 1024) {
+        addTrack(d.tabId, { url: d.url, size, referer: d.documentUrl || d.initiator || '' });
+      }
+      return;
+    }
     if (kind === 'file' && size && size < MIN_FILE_BYTES) return;
     addItem(d.tabId, { url: d.url, kind, mime, size, referer: d.documentUrl || d.initiator || '' });
   },
@@ -403,12 +534,16 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
   tabPageKey.set(d.tabId, pageKeyOf(d.url));
   await ready;
   tabItems.delete(d.tabId);
+  tabTracks.delete(d.tabId);
   await persistTab(d.tabId);
+  await persistTracks(d.tabId);
   updateBadge(d.tabId);
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   tabPageKey.delete(tabId);
+  tabTracks.delete(tabId);
+  chrome.storage.session.remove(`tracks:${tabId}`);
   await ready;
   tabItems.delete(tabId);
   chrome.storage.session.remove(`items:${tabId}`);
@@ -565,7 +700,7 @@ async function startHls(item, title, variantUrl) {
   return job;
 }
 
-function startHelper({ url, referer, title, quality, cookies, itemKey, named, subs }) {
+function startHelper({ url, referer, title, quality, cookies, itemKey, named, subs, message }) {
   const job = newJob({ title: safeName(title), itemKey, via: 'helper', kind: 'helper', detail: 'Starting helper' });
   let port;
   try {
@@ -596,7 +731,7 @@ function startHelper({ url, referer, title, quality, cookies, itemKey, named, su
     helperPorts.delete(job.id);
     failJob(job.id, chrome.runtime.lastError?.message || 'Helper closed unexpectedly');
   });
-  port.postMessage({ cmd: 'download', id: job.id, url, referer, quality, cookies: !!cookies, title, named: !!named, subs });
+  port.postMessage(message ? message(job.id) : { cmd: 'download', id: job.id, url, referer, quality, cookies: !!cookies, title, named: !!named, subs });
   return job;
 }
 
@@ -608,12 +743,31 @@ function helperUrlFor(item) {
 
 async function startDownload({ tabId, itemKey, variantUrl, quality, cookies, subs }) {
   await ready;
-  const item = tabItems.get(tabId)?.get(itemKey);
+  const item = findItem(tabId, itemKey);
   if (!item) throw new Error('That video is no longer in the list. Press Force detect.');
   const title = await currentTitle(tabId, item.title);
 
   const locked = protectedReasonOf(item);
   if (locked) throw new Error(`This video is copy-protected (${locked}). This tool does not bypass copy protection.`);
+
+  if (item.kind === 'tracks') {
+    const hs = await helperState();
+    if (hs.state !== 'ok') throw new Error('Picture and sound come as two files here, and joining them needs the helper app, which is not set up.');
+    return startHelper({
+      title,
+      itemKey,
+      referer: item.referer || item.pageUrl,
+      message: (id) => ({
+        cmd: 'merge_tracks',
+        id,
+        video_url: item.url,
+        audio_url: item.audioUrl || '',
+        sizes: [item.videoSize, item.audioSize],
+        referer: item.referer || item.pageUrl,
+        title,
+      }),
+    });
+  }
 
   if (item.kind === 'file') return startDirect(item, title);
 
@@ -690,6 +844,7 @@ async function handle(msg, sender) {
       const tabId = sender.tab?.id;
       if (tabId === undefined || !isHttp(msg.url)) return;
       const known = classify(msg.url, msg.mime);
+      if (known === 'track') return;
       // og:video usually points at an embed web page (YouTube does), not at a video file. Only keep it when it looks like media.
       if (msg.fromMeta && !known) return;
       const kind = known || 'file';
@@ -733,7 +888,7 @@ async function handle(msg, sender) {
       const items = annotate(visibleItems(msg.tabId));
       const main = items.filter((it) => !it.minor);
       // Sites that stream with DASH keep picture and sound in separate files.
-      return { items, streamSite: main.some((it) => it.needsHelper), protectedSite: main.some((it) => it.protectedReason) };
+      return { items, streamSite: main.some((it) => it.needsHelper && it.kind !== 'tracks'), protectedSite: main.some((it) => it.protectedReason) };
     }
     case 'helper-state':
       return helperState();
@@ -876,7 +1031,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     // Right-clicked video: use its URL when it is a normal address, otherwise the biggest detected item.
     let item = null;
     if (isHttp(info.srcUrl)) {
-      item = await addItem(tab.id, { url: info.srcUrl, kind: classify(info.srcUrl) || 'file', size: 0, referer: info.frameUrl || tab.url, source: 'dom' });
+      item = await addItem(tab.id, { url: info.srcUrl, kind: (classify(info.srcUrl) !== 'track' && classify(info.srcUrl)) || 'file', size: 0, referer: info.frameUrl || tab.url, source: 'dom' });
     } else {
       const list = visibleItems(tab.id);
       item = list.sort((a, b) => (b.size || 0) - (a.size || 0))[0];
