@@ -1,4 +1,4 @@
 {
-  "version": "0.4.1",
-  "notes": "Update now also installs missing tools and refreshes yt-dlp."
+  "version": "0.4.2",
+  "notes": "Download progress now shows inside the video card, no duplicate row."
 }

@@ -15,6 +15,17 @@ ffmpeg -y -loglevel error "${SRC[@]}" -movflags +faststart sample.mp4
 ffmpeg -y -loglevel error -i sample.mp4 -c copy -f hls -hls_time 4 -hls_playlist_type vod \
   -hls_segment_filename "hls/seg%03d.ts" hls/index.m3u8
 
+# a stream that declares real copy protection (never downloadable): the playlist alone is enough
+mkdir -p drm
+cat > drm/index.m3u8 <<'DRMEOF'
+#EXTM3U
+#EXT-X-TARGETDURATION:4
+#EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://fake",KEYFORMAT="com.apple.streamingkeydelivery"
+#EXTINF:4,
+../hls/seg000.ts
+#EXT-X-ENDLIST
+DRMEOF
+
 # AES-128: key file + keyinfo
 openssl rand 16 > hls_enc/enc.key
 printf 'enc.key\nhls_enc/enc.key\n' > hls_enc/keyinfo.txt

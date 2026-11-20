@@ -47,6 +47,9 @@ let showMinor = false;
 let update = null;
 let repoCfg = { repo: '', branch: 'main' };
 let isWindows = false;
+// Each card keeps its own download progress, so a download shows where its Download button is.
+const cardRefs = new Map(); // item key -> { slot, btn, note, refreshBlocked, running }
+const pageRef = { running: false };
 let jobs = [];
 let prefs = { quality: 'best', cookies: false, subMode: 'off', subLangs: 'en' };
 
@@ -83,10 +86,13 @@ function titleBlock(text, key, className) {
     apply();
   });
   apply();
-  // offer the toggle only when the text really is cut off
-  requestAnimationFrame(() => {
-    if (expandedTitles.has(key) || t.scrollHeight - t.clientHeight > 6) toggle.hidden = false;
-  });
+  // offer the toggle only when the text really is cut off, and look again whenever the width settles
+  const check = () => {
+    toggle.hidden = !(expandedTitles.has(key) || t.scrollHeight - t.clientHeight > 6);
+  };
+  toggle.addEventListener('click', check);
+  requestAnimationFrame(check);
+  new ResizeObserver(check).observe(t);
   return el('div', { class: 'title-wrap' }, t, toggle);
 }
 
@@ -114,7 +120,9 @@ function renderItems() {
     return;
   }
   const shown = items.filter((it) => showMinor || !it.minor);
+  cardRefs.clear();
   for (const it of shown) {
+    const ref = { running: false };
     const hls = it.hls;
     const chips = [];
     let select = null;
@@ -157,25 +165,31 @@ function renderItems() {
     const unreadable = it.kind === 'hls' && hls && hls.error && !hls.variants.length && !hls.duration;
     const refreshBlocked = () => {
       const missing = !it.protectedReason && variantNeedsHelper() && helper.state !== 'ok';
-      btn.disabled = !!it.protectedReason || missing || unreadable;
+      btn.disabled = !!it.protectedReason || missing || unreadable || ref.running;
+      btn.textContent = ref.running ? 'Downloading...' : 'Download';
       note.textContent = unreadable ? 'This playlist could not be read. Try Force detect.' : missing ? 'This one needs the helper app (see the bottom of this window).' : '';
       note.hidden = !(missing || unreadable);
     };
     const btn = el('button', {
       disabled: true,
-      onclick: async (e) => {
-        e.target.disabled = true;
+      onclick: async () => {
+        btn.disabled = true;
+        note.hidden = true;
         try {
           await ask({ type: 'download', tabId, itemKey: it.key, variantUrl: select?.value, quality: prefs.quality, cookies: prefs.cookies, subs: subsPayload() });
         } catch (err) {
-          showError(err.message);
+          note.textContent = err.message;
+          note.hidden = false;
         }
-        e.target.disabled = false;
+        refreshBlocked();
       },
     }, 'Download');
 
     if (it.minor) chips.push(chip(it.minor, 'warn'));
     const name = it.title || it.pageUrl || 'Video';
+    const slot = el('div', { class: 'job-slot' });
+    Object.assign(ref, { slot, btn, note, refreshBlocked });
+    cardRefs.set(it.key, ref);
     box.append(
       el('div', { class: 'card' },
         titleBlock(name, `card:${it.key}`, 'name'),
@@ -183,12 +197,14 @@ function renderItems() {
         el('div', { class: 'chips' }, chips),
         el('div', { class: 'row' }, select, !select && el('span', { style: 'flex:1' }), btn),
         note,
+        slot,
       ),
     );
     select?.addEventListener('change', refreshBlocked);
     refreshBlocked();
   }
   appendMinorToggle();
+  renderJobs();
 }
 
 function appendMinorToggle() {
@@ -203,6 +219,38 @@ function appendMinorToggle() {
   }, showMinor ? 'Hide previews and short clips' : `Show ${hiddenCount} hidden (previews, ads, short clips)`));
 }
 
+function revealButton(j) {
+  return el('button', {
+    class: 'link',
+    onclick: async (e) => {
+      try {
+        await ask({ type: 'reveal', jobId: j.id });
+      } catch (err) {
+        e.target.replaceWith(el('span', { class: 'detail' }, err.message));
+      }
+    },
+  }, 'Show in folder');
+}
+
+// Progress or result for one download, shown inside the card that started it.
+function jobInline(j) {
+  const pct = j.status === 'done' ? 100 : j.percent || 0;
+  let text;
+  if (j.status === 'running') text = pct > 0 ? `${pct}% · ${j.detail || 'Downloading'}` : j.detail || 'Starting';
+  else if (j.status === 'done') text = `${j.detail || 'Saved'}: ${j.filename ? tidyPath(j.filename) : ''}`;
+  else if (j.status === 'error') text = `Failed: ${j.detail || 'unknown error'}`;
+  else text = 'Canceled';
+  return el('div', { class: `job-inline ${j.status}` },
+    j.status === 'running' && el('progress', { max: 100, value: pct }),
+    el('div', { class: 'top' },
+      el('div', { class: 'detail' }, text),
+      j.status === 'running' && el('button', { class: 'link', onclick: () => ask({ type: 'cancel', jobId: j.id }) }, 'Cancel'),
+      j.status === 'done' && j.filename && revealButton(j),
+    ),
+  );
+}
+
+// Downloads that have no card to live in (the video is gone from the list) keep the separate row.
 function jobRow(j, withProgress) {
   const pct = j.status === 'done' ? 100 : j.percent || 0;
   const label = { running: `${pct}%`, done: 'Done', error: 'Failed', canceled: 'Canceled' }[j.status] || j.status;
@@ -215,18 +263,7 @@ function jobRow(j, withProgress) {
     ),
     withProgress && j.status === 'running' && el('progress', { max: 100, value: pct }),
     j.status === 'done' && j.filename
-      ? el('div', { class: 'detail' },
-        `${j.detail || 'Saved'}: ${tidyPath(j.filename)} `,
-        el('button', {
-          class: 'link',
-          onclick: async (e) => {
-            try {
-              await ask({ type: 'reveal', jobId: j.id });
-            } catch (err) {
-              e.target.replaceWith(el('span', { class: 'detail' }, err.message));
-            }
-          },
-        }, 'Show in folder'))
+      ? el('div', { class: 'detail' }, `${j.detail || 'Saved'}: ${tidyPath(j.filename)} `, revealButton(j))
       : el('div', { class: 'detail' }, j.detail || ''),
   );
 }
@@ -237,10 +274,28 @@ function tidyPath(path) {
   return m ? m[1] : path.split(/[\\/]/).pop();
 }
 
+const latestJobFor = (key) => [...jobs].filter((j) => j.itemKey === key).sort((x, y) => y.startedAt - x.startedAt)[0];
+
 function renderJobs() {
-  const sorted = [...jobs].sort((a, b) => b.startedAt - a.startedAt);
-  $('jobs-section').hidden = !sorted.length;
-  $('jobs').replaceChildren(...sorted.slice(0, 6).map((j) => jobRow(j, true)));
+  // Updates the progress inside each card without rebuilding it, so a quality choice is not lost mid-download.
+  for (const [key, ref] of cardRefs) {
+    const j = latestJobFor(key);
+    ref.running = j?.status === 'running';
+    ref.slot.replaceChildren(...(j ? [jobInline(j)] : []));
+    ref.refreshBlocked();
+  }
+  const pageVisible = !$('page-dl').hidden;
+  const pj = latestJobFor('page');
+  pageRef.running = pj?.status === 'running';
+  $('page-job').replaceChildren(...(pj && pageVisible ? [jobInline(pj)] : []));
+  $('page-go').disabled = pageRef.running;
+  $('page-go').textContent = pageRef.running ? 'Downloading...' : 'Download page';
+
+  const rest = [...jobs]
+    .filter((j) => !cardRefs.has(j.itemKey) && !(j.itemKey === 'page' && pageVisible))
+    .sort((a, b) => b.startedAt - a.startedAt);
+  $('jobs-section').hidden = !rest.length;
+  $('jobs').replaceChildren(...rest.slice(0, 6).map((j) => jobRow(j, true)));
 }
 
 async function renderHistory() {
@@ -436,16 +491,11 @@ function renderHint() {
   }
 }
 
-function showError(message) {
-  const jobsBox = $('jobs');
-  $('jobs-section').hidden = false;
-  jobsBox.prepend(el('div', { class: 'job error' }, el('div', { class: 'title' }, 'Could not start'), el('div', { class: 'detail' }, message)));
-}
-
 async function refreshItems() {
   ({ items, streamSite, protectedSite } = await ask({ type: 'list', tabId }));
   renderItems();
   renderHint();
+  renderJobs();
 }
 
 async function refreshHelper() {
@@ -454,6 +504,7 @@ async function refreshHelper() {
   renderUpdate();
   renderItems();
   renderHint();
+  renderJobs();
 }
 
 async function pollDirectProgress() {
@@ -513,12 +564,14 @@ async function init() {
   });
   $('page-go').addEventListener('click', async (e) => {
     e.target.disabled = true;
+    $('page-note').hidden = true;
     try {
       await ask({ type: 'download-page', tabId, quality: prefs.quality, cookies: prefs.cookies, subs: subsPayload() });
     } catch (err) {
-      showError(err.message);
+      $('page-note').textContent = err.message;
+      $('page-note').hidden = false;
     }
-    e.target.disabled = false;
+    e.target.disabled = pageRef.running;
   });
   $('clear').addEventListener('click', async () => {
     await ask({ type: 'clear-jobs' });

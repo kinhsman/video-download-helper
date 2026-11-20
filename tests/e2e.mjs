@@ -305,6 +305,20 @@ try {
   await cdp.send('Target.createTarget', { url: `${BASE}/plain.html` });
   await sleep(1500);
   const plainTabId = await evalIn(cdp, popupId, `chrome.tabs.query({}).then(ts => ts.find(t => t.url.endsWith('/plain.html'))?.id)`);
+  // progress lives inside the card that started it, not in a second row
+  const { targetId: uiId } = await cdp.send('Target.createTarget', { url: `chrome-extension://${EXT_ID}/popup.html?tab=${plainTabId}` });
+  await sleep(2500);
+  await evalIn(cdp, uiId, `document.querySelector('.card button:not(.link)').click()`);
+  await sleep(2500);
+  const inl = await evalIn(cdp, uiId, `({ inline: !!document.querySelector('.card .job-inline'), duplicateRow: document.getElementById('jobs').innerText.includes('VDH plain page'), text: document.querySelector('.card .job-inline')?.innerText || '' })`);
+  if (process.env.SHOT2) {
+    const { sessionId: ss2 } = await cdp.send('Target.attachToTarget', { targetId: uiId, flatten: true });
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 520, deviceScaleFactor: 2, mobile: false }, ss2);
+    const shot2 = await cdp.send('Page.captureScreenshot', { format: 'png' }, ss2);
+    writeFileSync(process.env.SHOT2, Buffer.from(shot2.data, 'base64'));
+  }
+  check('download progress shows inside the card, with no duplicate row for the same video', inl.inline && !inl.duplicateRow, JSON.stringify(inl));
+
   const { job: pj, error: pe } = await call({ type: 'download-page', tabId: plainTabId, quality: '720' });
   check('whole-page download starts via helper', !!pj, pe);
   if (pj) {
