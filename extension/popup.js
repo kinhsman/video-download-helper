@@ -399,6 +399,20 @@ function renderUpdate(justChecked = false) {
     if (helper.state === 'ok') {
       return el('p', {}, 'This is a development copy, so it cannot update itself. Update it with git pull, then reload the extension.');
     }
+    if (helper.state === 'no-permission') {
+      // The helper app is what swaps the files, so Update now needs it switched on. One click does that.
+      return el('div', {},
+        el('p', {}, 'Updating needs the helper app switched on in this browser.'),
+        el('div', { class: 'row' }, el('button', {
+          onclick: async () => {
+            const ok = await chrome.permissions.request({ permissions: ['nativeMessaging'] });
+            if (ok) await refreshHelper();
+          },
+        }, 'Enable helper, then update')),
+        el('p', { class: 'detail' }, `Or run this in ${isWindows ? 'PowerShell' : 'Terminal'}, then press the reload arrow on this extension in chrome://extensions:`),
+        el('code', {}, installCmd()),
+      );
+    }
     return el('div', {},
       el('p', {}, `Run this in ${isWindows ? 'PowerShell' : 'Terminal'}, then press the reload arrow on this extension in chrome://extensions:`),
       el('code', {}, installCmd()),

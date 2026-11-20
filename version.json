@@ -1,4 +1,4 @@
 {
-  "version": "0.4.2",
-  "notes": "Download progress now shows inside the video card, no duplicate row."
+  "version": "0.4.3",
+  "notes": "Update box offers Enable helper when the helper is switched off."
 }
