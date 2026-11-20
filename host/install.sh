@@ -3,6 +3,7 @@
 # Safe to re-run. Fully non-interactive: installs yt-dlp and ffmpeg with Homebrew when missing.
 #   VDH_NO_INSTALL=1 forbids installing anything, VDH_SKIP_TOOLS=1 skips yt-dlp and ffmpeg
 #   --refresh   non-interactive: only rewrite the launcher and browser registration
+#   --tools     only install missing tools and refresh yt-dlp (used by Update now)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,7 +12,9 @@ HOST_NAME="com.sang.video_helper"
 EXT_ID="$(tr -d '[:space:]' < "$ROOT/extension-id.txt")"
 SUPPORT="$HOME/Library/Application Support"
 REFRESH=0
+TOOLS=0
 [ "${1:-}" = "--refresh" ] && REFRESH=1
+[ "${1:-}" = "--tools" ] && TOOLS=1
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 PY="$(command -v python3 || true)"
@@ -44,6 +47,12 @@ if [ "$REFRESH" = 0 ] && [ -z "${VDH_SKIP_TOOLS:-}" ]; then
   fi
 fi
 
+# Update now: bring yt-dlp itself up to date too (YouTube changes often).
+if [ "$TOOLS" = 1 ] && [ -z "${VDH_NO_INSTALL:-}" ] && [ -z "${VDH_SKIP_TOOLS:-}" ] && command -v brew >/dev/null 2>&1 && brew list yt-dlp >/dev/null 2>&1; then
+  echo "Checking for a newer yt-dlp..."
+  if HOMEBREW_NO_ENV_HINTS=1 brew upgrade yt-dlp >/dev/null 2>&1; then echo "yt-dlp is up to date."; else echo "yt-dlp upgrade skipped."; fi
+fi
+
 # Remember where the tools are, because the browser's own PATH can be older than ours.
 if [ "$REFRESH" = 0 ]; then
   "$PY" - "$ROOT/tools.json" <<'PYTOOLS'
@@ -54,6 +63,8 @@ for n in ("yt-dlp", "ffmpeg"):
     print(f"Found {n}: {found[n]}" if n in found else f"{n} not found (only needed for YouTube-style sites).")
 PYTOOLS
 fi
+
+if [ "$TOOLS" = 1 ]; then exit 0; fi
 
 # Launcher so Chrome (which starts us with a bare PATH) always finds python.
 WRAPPER="$HERE/run_host.sh"

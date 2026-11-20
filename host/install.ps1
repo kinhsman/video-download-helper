@@ -2,9 +2,11 @@
 # Safe to re-run. Fully non-interactive: it installs Python, yt-dlp and ffmpeg with winget when missing.
 #   set VDH_NO_INSTALL=1 to forbid installing anything, VDH_SKIP_TOOLS=1 to skip yt-dlp and ffmpeg
 #   -Refresh   non-interactive: only rewrite the launcher and browser registration
+#   -Tools     only install missing tools and refresh yt-dlp (used by Update now)
 #   -Python    full path of the python to use (the helper passes its own when it updates itself)
 param(
   [switch]$Refresh,
+  [switch]$Tools,
   [string]$Python = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -76,17 +78,31 @@ function Find-Tool([string]$name) {
 # A window opened before Python was installed has a stale PATH, so re-read it first.
 Update-SessionPath
 if (-not (Test-Python $Python)) { $Python = Find-Python }
-if (-not $Python -and -not $Refresh) {
+if (-not $Python -and -not $Refresh -and -not $Tools) {
   Write-Host 'Python 3 was not found (the helper needs it).'
   [void](Install-WithWinget 'Python.Python.3.12' 'Python 3.12' -UserScope)
   $Python = Find-Python
 }
-if (-not $Python) {
+if (-not $Python -and -not $Tools) {
   throw 'Python 3 not found. Install it from https://www.python.org/downloads/ (tick "Add python.exe to PATH"), then run this again.'
 }
 
+# Update now: bring yt-dlp itself up to date too (YouTube changes often). Not fatal.
+function Update-YtDlp {
+  if ($env:VDH_NO_INSTALL -or $env:VDH_SKIP_TOOLS) { return }
+  if (-not (Find-Tool 'yt-dlp')) { return }
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host 'yt-dlp upgrade skipped (winget not available).'; return }
+  Write-Host 'Checking for a newer yt-dlp...'
+  & winget upgrade --id yt-dlp.yt-dlp -e --silent --accept-source-agreements --accept-package-agreements --disable-interactivity | Out-Null
+  $code = $LASTEXITCODE
+  Update-SessionPath
+  if ($code -eq 0) { Write-Host 'yt-dlp updated.' }
+  elseif ($code -eq -1978335189) { Write-Host 'yt-dlp is up to date.' }
+  else { Write-Host "yt-dlp upgrade skipped (code $code)." }
+}
+
 # --- yt-dlp and ffmpeg (for YouTube-style sites). Failures here are not fatal. ---
-if (-not $Refresh -and -not $env:VDH_SKIP_TOOLS) {
+if (($Tools -or -not $Refresh) -and -not $env:VDH_SKIP_TOOLS) {
   $tools = @(@{ cmd = 'yt-dlp'; id = 'yt-dlp.yt-dlp' }, @{ cmd = 'ffmpeg'; id = 'Gyan.FFmpeg' })
   foreach ($t in $tools) {
     if (Find-Tool $t.cmd) { continue }
@@ -100,8 +116,10 @@ if (-not $Refresh -and -not $env:VDH_SKIP_TOOLS) {
   }
 }
 
+if ($Tools) { Update-YtDlp }
+
 # --- remember where the tools are, because the browser's own PATH can be older than ours ---
-if (-not $Refresh) {
+if ($Tools -or -not $Refresh) {
   $found = [ordered]@{}
   foreach ($name in @('yt-dlp', 'ffmpeg', 'deno', 'node')) {
     $cmd = Get-Command $name -ErrorAction SilentlyContinue
@@ -115,6 +133,8 @@ if (-not $Refresh) {
   }
   [System.IO.File]::WriteAllText((Join-Path $Root 'tools.json'), ($found | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
 }
+
+if ($Tools) { return }
 
 # --- launcher: browsers cannot start a .py directly, so point them at a small .bat ---
 $Launcher = Join-Path $Root 'run_host.bat'

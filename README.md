@@ -20,7 +20,7 @@ Read `install.sh` first if you like. It never asks questions. It writes inside y
 ## Updates
 
 The extension checks for a new version once a day. When there is one, the popup shows a banner and a notification.
-Press Update now, the extension reloads itself on the new version. No helper? The banner shows the same install command, run it again and press the reload arrow on the extension.
+Press Update now: it swaps the extension and helper files, installs any missing tools (yt-dlp, ffmpeg, deno) and refreshes yt-dlp, showing progress as it goes, then the extension reloads itself on the new version. This can take a minute or two. No helper? The banner shows the same install command, run it again and press the reload arrow on the extension.
 
 ## What it does
 

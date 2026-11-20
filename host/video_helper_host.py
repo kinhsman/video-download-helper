@@ -348,6 +348,41 @@ def is_installed_copy():
         return False
 
 
+def update_tools():
+    """After the files are swapped: install missing tools (yt-dlp, ffmpeg, deno) and refresh yt-dlp.
+    Runs the installer in tools mode and streams what it says so the popup can show progress.
+    Failures here never undo the update. Skipped when VDH_SKIP_TOOLS is set."""
+    if os.environ.get("VDH_SKIP_TOOLS"):
+        return []
+    if IS_WINDOWS:
+        cmd = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "host" / "install.ps1"), "-Tools", "-Python", sys.executable]
+    else:
+        cmd = ["bash", str(ROOT / "host" / "install.sh"), "--tools"]
+    lines = []
+    try:
+        proc = subprocess.Popen(
+            cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+            creationflags=NOWINDOW,
+        )
+        timer = threading.Timer(600, proc.kill)
+        timer.start()
+        try:
+            for line in proc.stdout:
+                line = line.strip()
+                if line:
+                    lines.append(line)
+                    send({"type": "progress", "note": line[:90]})
+            proc.wait()
+        finally:
+            timer.cancel()
+        if proc.returncode != 0:
+            lines.append("Tool step stopped early")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"Tool step skipped: {str(e)[:80]}")
+    keep = re.compile(r"(installed|updated|up to date|skipp|could not|not found|stopped early|no javascript)", re.IGNORECASE)
+    return [l[:90] for l in lines if keep.search(l)][:4]
+
+
 def do_update():
     """Replaces extension/ and host/ with the latest published copy. The browser extension then reloads itself."""
     if not is_installed_copy():
@@ -413,7 +448,9 @@ def do_update():
                 shutil.rmtree(bak, ignore_errors=True)
         finally:
             shutil.rmtree(work, ignore_errors=True)
-        send({"type": "updated", "version": new_version})
+        send({"type": "progress", "note": f"Files updated to {new_version}"})
+        notes = update_tools()
+        send({"type": "updated", "version": new_version, "notes": notes})
     except Exception as e:  # noqa: BLE001
         send({"type": "error", "message": f"Update failed: {str(e)[:200]}"})
 

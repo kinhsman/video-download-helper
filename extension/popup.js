@@ -314,19 +314,26 @@ function renderUpdate(justChecked = false) {
   // because the popup may be scrolled down when the user presses Check for updates.
   const updateActions = () => {
     if (helper.state === 'ok' && helper.installed) {
-      const msg = el('div', { class: 'detail' });
+      const msg = el('div', { class: 'detail' }, 'Also installs missing tools and refreshes yt-dlp. Can take a minute or two.');
       return el('div', {},
         el('div', { class: 'row' }, el('button', {
           onclick: async (e) => {
-            e.target.disabled = true;
-            e.target.textContent = 'Updating...';
+            const btn = e.target;
+            btn.disabled = true;
+            btn.textContent = 'Updating...';
+            // the background tells us what the helper is doing; it reloads the extension itself when done
+            const live = (changes, area) => {
+              if (area === 'session' && changes.updateProgress) msg.textContent = changes.updateProgress.newValue || '';
+            };
+            chrome.storage.onChanged.addListener(live);
             try {
-              await ask({ type: 'apply-update' });
-              e.target.textContent = 'Updated, reloading...';
-              setTimeout(() => chrome.runtime.reload(), 700);
+              const r = await ask({ type: 'apply-update' });
+              btn.textContent = 'Updated, reloading...';
+              msg.textContent = (r.notes || []).join(' · ') || `Now version ${r.version}`;
             } catch (err) {
-              e.target.disabled = false;
-              e.target.textContent = 'Update now';
+              chrome.storage.onChanged.removeListener(live);
+              btn.disabled = false;
+              btn.textContent = 'Update now';
               msg.textContent = err.message;
             }
           },

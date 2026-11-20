@@ -33,17 +33,29 @@ def check(name, cond, extra=""):
         failed += 1
 
 
-def talk(host_cmd, request, env):
+def talk_all(host_cmd, request, env):
+    """Every message the helper sends until its final one (progress notes come first)."""
     p = subprocess.Popen(host_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
     data = json.dumps(request).encode()
     p.stdin.write(struct.pack("=I", len(data)) + data)
     p.stdin.flush()
-    raw = p.stdout.read(4)
-    (n,) = struct.unpack("=I", raw)
-    msg = json.loads(p.stdout.read(n))
+    msgs = []
+    while True:
+        raw = p.stdout.read(4)
+        if len(raw) < 4:
+            break
+        (n,) = struct.unpack("=I", raw)
+        msg = json.loads(p.stdout.read(n))
+        msgs.append(msg)
+        if msg["type"] in ("pong", "updated", "error", "done"):
+            break
     p.stdin.close()
-    p.wait(timeout=60)
-    return msg
+    p.wait(timeout=120)
+    return msgs
+
+
+def talk(host_cmd, request, env):
+    return talk_all(host_cmd, request, env)[-1]
 
 
 def make_release(version, dest_tgz, drop=None):
@@ -135,12 +147,23 @@ with tempfile.TemporaryDirectory() as tmp:
         pong = talk(launcher, {"cmd": "ping"}, env)
         check("helper still works after updating itself", pong.get("type") == "pong" and pong.get("version") == "9.9.9", pong)
 
+        # 2b. Update now also runs the tools step and streams what it does (nothing is really installed here)
+        tgz2 = Path(tmp) / "new2.tar.gz"
+        make_release("9.9.10", tgz2)
+        tenv = {**env, "VDH_UPDATE_URL": tgz2.as_uri(), "VDH_NO_INSTALL": "1"}
+        tenv.pop("VDH_SKIP_TOOLS", None)
+        msgs = talk_all(launcher, {"cmd": "update"}, tenv)
+        notes_seen = [m for m in msgs if m["type"] == "progress"]
+        check("update streams progress notes from the files step and the tools step", len(notes_seen) >= 2 and msgs[-1]["type"] == "updated" and "notes" in msgs[-1], msgs)
+        check("tools step wrote tools.json", (dest / "tools.json").exists() and isinstance(json.loads((dest / "tools.json").read_text(encoding="utf-8")), dict))
+        check("update to 9.9.10 landed", json.loads((dest / "version.json").read_text())["version"] == "9.9.10")
+
         # 3. a broken download leaves the installed copy alone
         bad = Path(tmp) / "bad.tar.gz"
         make_release("10.0.0", bad, drop="version.json")
         msg = talk(launcher, {"cmd": "update"}, {**env, "VDH_UPDATE_URL": bad.as_uri()})
         check("incomplete download is rejected", msg.get("type") == "error", msg)
-        check("installed copy untouched after a bad update", json.loads((dest / "extension" / "manifest.json").read_text())["version"] == "9.9.9" and (dest / "host" / "video_helper_host.py").exists())
+        check("installed copy untouched after a bad update", json.loads((dest / "extension" / "manifest.json").read_text())["version"] == "9.9.10" and (dest / "host" / "video_helper_host.py").exists())
 
         # 4. plain http update address is refused
         msg = talk(launcher, {"cmd": "update"}, {**env, "VDH_UPDATE_URL": "http://example.com/x.tar.gz"})
@@ -152,7 +175,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
         # 6. re-running the installer updates in place and says so
         r = run_installer(env)
-        check("re-run reports an update", "Updated 9.9.9" in r.stdout and "reload" in r.stdout.lower(), r.stdout[-300:] + r.stderr[-300:])
+        check("re-run reports an update", "Updated 9.9.10" in r.stdout and "reload" in r.stdout.lower(), r.stdout[-300:] + r.stderr[-300:])
     finally:
         if WIN:
             subprocess.run(["reg", "delete", r"HKCU\Software\Google\Chrome\NativeMessagingHosts\com.sang.video_helper", "/f"], capture_output=True)

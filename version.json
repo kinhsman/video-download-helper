@@ -1,4 +1,4 @@
 {
-  "version": "0.4.0",
-  "notes": "Subtitle download for YouTube, no stale videos after switching, cookie fallback, YouTube JS runtime."
+  "version": "0.4.1",
+  "notes": "Update now also installs missing tools and refreshes yt-dlp."
 }

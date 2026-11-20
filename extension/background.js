@@ -455,6 +455,44 @@ function helperRequest(msg, timeoutMs) {
   });
 }
 
+// Update now: the helper swaps the files, installs missing tools and refreshes yt-dlp, telling us what it does
+// as it goes. We reload ourselves at the end so it works even if the popup was closed meanwhile.
+function applyUpdate() {
+  return new Promise((resolve, reject) => {
+    chrome.storage.session.set({ updateProgress: 'Starting update' });
+    const port = chrome.runtime.connectNative(HELPER_HOST);
+    let finished = false;
+    const timer = setTimeout(() => {
+      finished = true;
+      port.disconnect();
+      reject(new Error('The update took too long. Try again.'));
+    }, 10 * 60 * 1000);
+    port.onMessage.addListener((m) => {
+      if (m.type === 'progress' && m.note) {
+        chrome.storage.session.set({ updateProgress: m.note });
+      } else if (m.type === 'updated') {
+        finished = true;
+        clearTimeout(timer);
+        port.disconnect();
+        chrome.storage.session.set({ updateProgress: `Updated to ${m.version}. Reloading` });
+        notify('Video Download Helper updated', [`Now version ${m.version}.`, ...(m.notes || [])].join(' '));
+        setTimeout(() => chrome.runtime.reload(), 1200);
+        resolve({ version: m.version, notes: m.notes || [] });
+      } else if (m.type === 'error') {
+        finished = true;
+        clearTimeout(timer);
+        port.disconnect();
+        reject(new Error(m.message));
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      clearTimeout(timer);
+      if (!finished) reject(new Error(chrome.runtime.lastError?.message || 'The helper closed during the update.'));
+    });
+    port.postMessage({ cmd: 'update' });
+  });
+}
+
 function finishJob(id, patch) {
   const job = updateJob(id, { percent: 100, ...patch, status: 'done', finishedAt: Date.now() });
   if (!job) return;
@@ -707,11 +745,8 @@ async function handle(msg, sender) {
     }
     case 'check-update':
       return checkForUpdate();
-    case 'apply-update': {
-      const r = await helperRequest({ cmd: 'update' }, 120000);
-      if (r.type === 'error') throw new Error(r.message);
-      return { version: r.version };
-    }
+    case 'apply-update':
+      return applyUpdate();
     case 'download':
       return { job: await startDownload(msg) };
     case 'download-page':
