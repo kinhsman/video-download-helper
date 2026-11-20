@@ -59,6 +59,8 @@ async function session(name, port, withHelper) {
   const { sessionId: ds } = await send('Target.attachToTarget', { targetId: driverId, flatten: true });
   const tabId = (await send('Runtime.evaluate', { expression: `chrome.tabs.query({}).then(ts => ts.find(t => t.url.endsWith('/qa.html'))?.id)`, awaitPromise: true, returnByValue: true }, ds)).result.value;
 
+  // a running whole-page download, so the progress bar shows
+  await send('Runtime.evaluate', { expression: `chrome.storage.session.set({ jobs: [{ id: 'jx', title: 'Example', itemKey: 'page', status: 'running', percent: 42, detail: 'Downloading picture', startedAt: Date.now(), via: 'helper' }] })`, awaitPromise: true }, ds);
   // pretend an update is waiting so the banner shows too
   await send('Runtime.evaluate', { expression: `chrome.storage.local.set({ update: { current: '0.0.1', latest: '99.0.0', available: true, notes: 'Example release notes.', checkedAt: Date.now(), repo: 'kinhsman/video-download-helper', branch: 'main' } })`, awaitPromise: true }, ds);
   for (const scheme of ['dark', 'light']) {

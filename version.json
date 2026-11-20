@@ -1,4 +1,4 @@
 {
-  "version": "0.5.0",
-  "notes": "Sites that play picture and sound as two files (Bilibili) are now detected and joined by the helper."
+  "version": "0.5.1",
+  "notes": "Check for updates is a real button, taller and nicer progress bar."
 }

@@ -356,7 +356,7 @@ function renderUpdate(justChecked = false) {
   const current = chrome.runtime.getManifest().version;
   const status = el('div', { class: 'detail' }, updateStatusText());
   const checkBtn = el('button', {
-    class: 'link',
+    class: 'ghost small',
     onclick: async () => {
       checkBtn.disabled = true;
       checkBtn.textContent = 'Checking...';
@@ -424,7 +424,7 @@ function renderUpdate(justChecked = false) {
     );
   };
 
-  $('version').replaceChildren(`Version ${current} `, checkBtn, status);
+  $('version').replaceChildren(el('div', { class: 'version-row' }, el('span', {}, `Version ${current}`), checkBtn), status);
   if (!updateAvailable()) {
     box.hidden = true;
     return;
