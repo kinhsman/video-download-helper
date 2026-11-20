@@ -69,14 +69,14 @@ async function session(name, port, withHelper) {
     await send('Emulation.setDeviceMetricsOverride', { width: 380, height: 900, deviceScaleFactor: 2, mobile: false }, sessionId);
     await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] }, sessionId);
     await sleep(2500);
-    await send('Runtime.evaluate', { expression: `document.body.style.maxHeight = 'none'; document.documentElement.scrollHeight`, returnByValue: true }, sessionId);
+    await send('Runtime.evaluate', { expression: `document.body.style.maxHeight = 'none'; document.querySelector('.shell').style.maxHeight = 'none'; document.querySelector('.scroll').style.overflow = 'visible'; document.documentElement.scrollHeight`, returnByValue: true }, sessionId);
     const h = (await send('Runtime.evaluate', { expression: 'document.body.scrollHeight', returnByValue: true }, sessionId)).result.value;
     await send('Emulation.setDeviceMetricsOverride', { width: 380, height: Math.min(h + 20, 2400), deviceScaleFactor: 2, mobile: false }, sessionId);
     const shot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
     writeFileSync(join(OUT, `${name}-${scheme}.png`), Buffer.from(shot.data, 'base64'));
     if (scheme === 'dark') {
       // open the first long title and shoot again
-      await send('Runtime.evaluate', { expression: `document.querySelector('.more:not([hidden])')?.click()`, returnByValue: true }, sessionId);
+      await send('Runtime.evaluate', { expression: `document.querySelector('.more-link:not([hidden])')?.click()`, returnByValue: true }, sessionId);
       await sleep(300);
       const h2 = (await send('Runtime.evaluate', { expression: 'document.body.scrollHeight', returnByValue: true }, sessionId)).result.value;
       await send('Emulation.setDeviceMetricsOverride', { width: 380, height: Math.min(h2 + 20, 2400), deviceScaleFactor: 2, mobile: false }, sessionId);

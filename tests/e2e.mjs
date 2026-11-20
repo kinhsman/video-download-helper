@@ -255,16 +255,16 @@ try {
     const b = document.querySelector('#version button');
     b.click();
     await new Promise(r => setTimeout(r, 1500));
-    return document.getElementById('version').innerText;
+    return document.getElementById('version-note').innerText;
   })()`);
   // when an update exists, the way to apply it must sit right under the version line, not only at the top
   await setOverride(`${BASE}/newer-version.json`);
   const withUpdate = await evalIn(cdp, popupId, `(async () => {
     document.querySelector('#version button').click();
     await new Promise(r => setTimeout(r, 1500));
-    return document.getElementById('version').innerText;
+    return JSON.stringify({ button: document.querySelector('#version button').innerText, sheetOpen: !document.getElementById('update').hidden, sheet: document.getElementById('update').innerText });
   })()`);
-  check('Check for updates with a newer version shows what to do right there', /Update available: version 99\.0\.0/.test(withUpdate) && /(Update now|development copy|install\.sh|install\.ps1)/.test(withUpdate), JSON.stringify(withUpdate));
+  check('a newer version turns the footer into an Update available button and opens what to do', /Update available/.test(withUpdate) && /Version 99\.0\.0 is available/.test(withUpdate) && /(Update now|development copy|install\.sh|install\.ps1)/.test(withUpdate) && /"sheetOpen":true/.test(withUpdate), withUpdate);
   await setOverride(`${BASE}/same-version.json`);
   check('Check for updates button shows a visible result', /Checked just now/.test(clicked) && /Latest published/.test(clicked), JSON.stringify(clicked));
   await setOverride(`${BASE}/newer-version.json`);
@@ -328,7 +328,7 @@ try {
   const { targetId: cardsId } = await cdp.send('Target.createTarget', { url: `chrome-extension://${EXT_ID}/popup.html?tab=${qaTabId}` });
   await sleep(2500);
   const cardsText = await evalIn(cdp, cardsId, `document.getElementById('list').innerText`);
-  check('helper connected: cards say "downloads via helper", not "needs helper"', /downloads via helper/.test(cardsText) && !/needs helper/.test(cardsText), JSON.stringify(cardsText.slice(0, 300)));
+  check('helper connected: a recommended card shows and nothing says the helper is needed', /recommended/i.test(cardsText) && !/needs the helper/i.test(cardsText), JSON.stringify(cardsText.slice(0, 300)));
 
   // whole-page download on a page with no protected video
   await cdp.send('Target.createTarget', { url: `${BASE}/plain.html` });
@@ -337,16 +337,16 @@ try {
   // progress lives inside the card that started it, not in a second row
   const { targetId: uiId } = await cdp.send('Target.createTarget', { url: `chrome-extension://${EXT_ID}/popup.html?tab=${plainTabId}` });
   await sleep(2500);
-  await evalIn(cdp, uiId, `document.querySelector('.card button:not(.link)').click()`);
+  await evalIn(cdp, uiId, `document.querySelector('.unit button.mw-btn:not(:disabled)').click()`);
   await sleep(2500);
-  const inl = await evalIn(cdp, uiId, `({ inline: !!document.querySelector('.card .job-inline'), duplicateRow: document.getElementById('jobs').innerText.includes('VDH plain page'), text: document.querySelector('.card .job-inline')?.innerText || '' })`);
+  const inl = await evalIn(cdp, uiId, `({ inline: !!document.querySelector('.unit .job-inline'), duplicateRow: document.querySelectorAll('#panel-page .job').length > 0, text: document.querySelector('.unit .job-inline')?.innerText || '' })`);
   if (process.env.SHOT2) {
     const { sessionId: ss2 } = await cdp.send('Target.attachToTarget', { targetId: uiId, flatten: true });
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 520, deviceScaleFactor: 2, mobile: false }, ss2);
     const shot2 = await cdp.send('Page.captureScreenshot', { format: 'png' }, ss2);
     writeFileSync(process.env.SHOT2, Buffer.from(shot2.data, 'base64'));
   }
-  check('download progress shows inside the card, with no duplicate row for the same video', inl.inline && !inl.duplicateRow, JSON.stringify(inl));
+  check('download progress shows inside the unit, with no separate row on the This page tab', inl.inline && !inl.duplicateRow, JSON.stringify(inl));
 
   const { job: pj, error: pe } = await call({ type: 'download-page', tabId: plainTabId, quality: '720' });
   check('whole-page download starts via helper', !!pj, pe);

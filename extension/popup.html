@@ -7,63 +7,77 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header>
-    <h1>Video Download Helper</h1>
-    <button id="detect" class="ghost" title="Reload this page and look for videos again">Force detect</button>
-  </header>
+  <div class="shell">
+    <header class="top">
+      <h1>Video Download Helper</h1>
+      <button id="detect" class="mw-iconbtn mw-iconbtn--soft" type="button" title="Scan this page again" aria-label="Scan this page again"></button>
+    </header>
 
-  <section id="update" class="hint" hidden></section>
-
-  <section id="hint" class="hint" hidden></section>
-
-  <section id="found">
-    <h2>On this page</h2>
-    <div id="list"></div>
-  </section>
-
-  <section id="page-dl" hidden>
-    <h2>Whole page (yt-dlp)</h2>
-    <div class="row">
-      <select id="page-quality" aria-label="Quality">
-        <option value="best">Best quality</option>
-        <option value="1080">Up to 1080p</option>
-        <option value="720">Up to 720p</option>
-        <option value="audio">Audio only</option>
-      </select>
-      <button id="page-go">Download page</button>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button id="tab-page" class="tab" role="tab" aria-selected="true" aria-controls="panel-page" type="button">This page <span id="count-page" class="count"></span></button>
+      <button id="tab-dl" class="tab" role="tab" aria-selected="false" aria-controls="panel-dl" type="button">Downloads <span id="count-dl" class="count"></span></button>
     </div>
-    <div class="row subs">
-      <select id="sub-mode" aria-label="Subtitles">
-        <option value="off">No subtitles</option>
-        <option value="file">Subtitles as .srt file</option>
-        <option value="embed">Subtitles inside the video</option>
-        <option value="only">Subtitles only (no video)</option>
-      </select>
-      <input id="sub-langs" value="en" aria-label="Subtitle languages" placeholder="en,vi,th" maxlength="60" spellcheck="false">
-    </div>
-    <div id="page-job"></div>
-    <div class="note" id="page-note" hidden></div>
-    <div class="detail" id="sub-hint" hidden>Languages: codes like en, vi, th, separated by commas. Includes auto-generated captions.</div>
-    <label class="check"><input type="checkbox" id="cookies"> Use my Chrome login (cookies)</label>
-  </section>
 
-  <section id="jobs-section" hidden>
-    <h2>Downloads <button id="clear" class="link">Clear</button></h2>
-    <div id="jobs"></div>
-  </section>
+    <main class="scroll">
+      <section id="panel-page" role="tabpanel" aria-labelledby="tab-page">
+        <div id="notice" hidden></div>
+        <div id="list"></div>
 
-  <section id="history-section" hidden>
-    <details>
-      <summary>Recent</summary>
-      <div id="history"></div>
-      <button id="clear-history" class="link">Clear history</button>
-    </details>
-  </section>
+        <details id="more" class="more" hidden>
+          <summary>More options</summary>
+          <div class="more-body">
+            <div class="eyebrow">Download the whole page</div>
+            <div class="row">
+              <select id="page-quality" aria-label="Quality">
+                <option value="best">Best quality</option>
+                <option value="1080">Up to 1080p</option>
+                <option value="720">Up to 720p</option>
+                <option value="audio">Audio only</option>
+              </select>
+              <button id="page-go" class="mw-btn mw-btn--secondary mw-btn--sm" type="button">Download page</button>
+            </div>
+            <div id="page-job"></div>
+            <div class="note" id="page-note" hidden></div>
 
-  <footer>
-    <div id="helper"></div>
-    <div id="version"></div>
-  </footer>
+            <div class="eyebrow">Subtitles</div>
+            <div class="row">
+              <select id="sub-mode" aria-label="Subtitles">
+                <option value="off">No subtitles</option>
+                <option value="file">Save as .srt file</option>
+                <option value="embed">Put inside the video</option>
+                <option value="only">Subtitles only</option>
+              </select>
+              <input id="sub-langs" value="en" aria-label="Subtitle languages" placeholder="en,vi,th" maxlength="60" spellcheck="false">
+            </div>
+            <div class="hint" id="sub-hint" hidden>Languages are codes like en, vi, th, separated by commas. Auto-generated captions are included.</div>
+
+            <label class="check">
+              <input type="checkbox" id="cookies">
+              <span>Use my Chrome login<small>For members-only videos. Chrome can lock its login file while it is open, then the helper carries on without it.</small></span>
+            </label>
+          </div>
+        </details>
+      </section>
+
+      <section id="panel-dl" role="tabpanel" aria-labelledby="tab-dl" hidden>
+        <div id="jobs"></div>
+        <div class="eyebrow" id="history-label" hidden>Earlier</div>
+        <div id="history"></div>
+        <div id="dl-empty" class="empty" hidden>Nothing downloaded yet.</div>
+        <div class="row-end"><button id="clear" class="mw-btn mw-btn--secondary mw-btn--sm" type="button">Clear list</button></div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="foot-row">
+        <button id="status" class="status" type="button" aria-expanded="false"><span id="status-dot" class="dot"></span><span id="status-text">Checking helper...</span></button>
+        <div id="version"></div>
+      </div>
+      <div id="version-note" class="hint" hidden></div>
+      <div id="diag" class="sheet" hidden></div>
+      <div id="update" class="sheet" hidden></div>
+    </footer>
+  </div>
 
   <script type="module" src="popup.js"></script>
 </body>

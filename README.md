@@ -36,6 +36,10 @@ Press Update now: it swaps the extension and helper files, installs any missing 
 - Files land in `Downloads/VideoHelper/`. Each finished download has a Show in folder link.
 - Also: toolbar badge count, Force detect, right-click "Download this video", finish notification, recent history.
 
+## The popup
+
+The layout follows a design made in Claude Design (Meadow look, light and dark). The Recommended card is the one-click choice (full video with sound). Other streams are listed under Other downloads, files that could not be read fold into one line with a Scan again button, and previews or ads are hidden behind a button. This page and Downloads are two tabs, progress sits inside the row that started it. The footer shows a helper status dot (click it for details) and a real button: Check for updates, which turns into Update available.
+
 ## Using it
 
 1. Open a page with a video and press play (some sites only load the video once it plays).
