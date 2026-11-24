@@ -7,6 +7,15 @@ const SEGMENT_HINT = /(^|[\/_.-])(seg(ment)?|chunk|frag(ment)?|init|part)[-_]?\d
 const MAX_BROWSER_HLS_BYTES = 1.5 * 1024 * 1024 * 1024;
 const SAVE_DIR = 'VideoHelper';
 
+// Chrome names blob: downloads after the blob's UUID and can ignore the filename passed to downloads.download().
+// Remember what we meant to call each URL and force it when Chrome asks what to save it as.
+const intendedNames = new Map(); // url -> 'VideoHelper/title.ext'
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  const want = intendedNames.get(item.url) || intendedNames.get(item.finalUrl);
+  if (want) suggest({ filename: want, conflictAction: 'uniquify' });
+  else suggest();
+});
+
 // ---------- state ----------
 
 const tabItems = new Map(); // tabId -> Map(key -> item)
@@ -700,6 +709,7 @@ async function startDirect(item, title) {
   const job = newJob({ title: safeName(title), itemKey: item.key, via: 'browser', kind: 'file', filename: name, detail: 'Downloading' });
   try {
     await ensureRefererRules([hostOf(item.url)], item.referer || item.pageUrl);
+    intendedNames.set(item.url, `${SAVE_DIR}/${name}`);
     const downloadId = await chrome.downloads.download({ url: item.url, filename: `${SAVE_DIR}/${name}`, conflictAction: 'uniquify', saveAs: false });
     updateJob(job.id, { downloadId });
   } catch (e) {
@@ -899,6 +909,7 @@ async function handle(msg, sender) {
       }
       updateJob(msg.jobId, { detail: 'Saving file', percent: 99, filename: msg.filename, blobUrl: msg.blobUrl });
       try {
+        intendedNames.set(msg.blobUrl, `${SAVE_DIR}/${msg.filename}`);
         const downloadId = await chrome.downloads.download({ url: msg.blobUrl, filename: `${SAVE_DIR}/${msg.filename}`, conflictAction: 'uniquify', saveAs: false });
         updateJob(msg.jobId, { downloadId });
       } catch (e) {

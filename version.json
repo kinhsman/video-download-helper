@@ -1,4 +1,4 @@
 {
-  "version": "0.6.2",
-  "notes": "Wording cleanup in the popup messages and readme."
+  "version": "0.6.3",
+  "notes": "Saved HLS files keep the page title instead of a random ID."
 }
