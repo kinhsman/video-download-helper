@@ -2,7 +2,7 @@ import { parsePlaylist, variantLabel, shouldSniffForPlaylist, looksLikePlaylist 
 
 const HELPER_HOST = 'com.sang.video_helper';
 const MIN_FILE_BYTES = 1024 * 1024; // smaller network files are almost always stream chunks, thumbnails or ads
-const DRM_HINT = /(^|[\/_.-])drm([\/_.-]|$)/i;
+const LOCK_HINT = /(^|[\/_.-])drm([\/_.-]|$)/i;
 const SEGMENT_HINT = /(^|[\/_.-])(seg(ment)?|chunk|frag(ment)?|init|part)[-_]?\d*\.(mp4|m4s|m4v|webm|pmp4)$|\/\d+\.(mp4|m4v|webm|pmp4|m4s)$/i;
 const MAX_BROWSER_HLS_BYTES = 1.5 * 1024 * 1024 * 1024;
 const SAVE_DIR = 'VideoHelper';
@@ -282,7 +282,7 @@ const normUrl = (u) => {
   }
 };
 
-// Reads a DASH manifest just enough to know whether it is copy-protected and which files it points at.
+// Reads a DASH manifest just enough to know whether it is protected and which files it points at.
 async function probeDash(tabId, item) {
   try {
     await ensureRefererRules([hostOf(item.url)], item.referer);
@@ -292,11 +292,11 @@ async function probeDash(tabId, item) {
     let reason = null;
     const cps = text.match(/<ContentProtection\b[^>]*>/gi) || [];
     for (const tag of cps) {
-      if (/edef8ba9-79d6-4ace-a3c8-27dcd51d21ed/i.test(tag)) reason = 'DRM (Widevine)';
-      else if (/9a04f079-9840-4286-ab92-e65be0885f95|playready/i.test(tag)) reason = reason || 'DRM (PlayReady)';
-      else if (/94ce86fb-07ff-4f43-adb8-93d2fa968ca2|fairplay/i.test(tag)) reason = reason || 'DRM (FairPlay)';
+      if (/edef8ba9-79d6-4ace-a3c8-27dcd51d21ed/i.test(tag)) reason = 'Widevine';
+      else if (/9a04f079-9840-4286-ab92-e65be0885f95|playready/i.test(tag)) reason = reason || 'PlayReady';
+      else if (/94ce86fb-07ff-4f43-adb8-93d2fa968ca2|fairplay/i.test(tag)) reason = reason || 'FairPlay';
     }
-    if (!reason && cps.some((t) => /mp4protection|cenc|cbcs/i.test(t))) reason = 'DRM (encrypted)';
+    if (!reason && cps.some((t) => /mp4protection|cenc|cbcs/i.test(t))) reason = 'encrypted tracks';
     const tracks = [];
     for (const m of text.matchAll(/<BaseURL[^>]*>\s*([^<\s]+)\s*<\/BaseURL>/gi)) {
       try {
@@ -320,7 +320,7 @@ function protectedReasonOf(it) {
   if (it.dash?.protected) return it.dash.protected;
   if (it.kind === 'file') {
     try {
-      if (DRM_HINT.test(new URL(it.url).pathname)) return 'DRM (stream name says drm)';
+      if (LOCK_HINT.test(new URL(it.url).pathname)) return 'stream name says protected';
     } catch {}
   }
   return null;
@@ -776,7 +776,7 @@ async function startDownload({ tabId, itemKey, variantUrl, quality, cookies, sub
   const title = await currentTitle(tabId, item.title);
 
   const locked = protectedReasonOf(item);
-  if (locked) throw new Error(`This video is copy-protected (${locked}). This tool does not bypass copy protection.`);
+  if (locked) throw new Error(`This video is protected (${locked}). It cannot be downloaded.`);
 
   if (item.kind === 'tracks') {
     const hs = await helperState();
@@ -823,7 +823,7 @@ async function startPageDownload({ tabId, quality, cookies, subs }) {
   if (!isHttp(tab.url)) throw new Error('This page cannot be downloaded.');
   await ready;
   const locked = [...(tabItems.get(tabId)?.values() || [])].map(protectedReasonOf).find(Boolean);
-  if (locked) throw new Error(`The video on this page is copy-protected (${locked}). This tool does not bypass copy protection.`);
+  if (locked) throw new Error(`The video on this page is protected (${locked}). It cannot be downloaded.`);
   const hs = await helperState();
   if (hs.state !== 'ok') throw new Error('The helper app is not set up.');
   return startHelper({ url: tab.url, referer: tab.url, title: tab.title, quality: quality || 'best', cookies, itemKey: 'page', subs });

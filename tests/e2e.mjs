@@ -205,18 +205,18 @@ try {
   check('DASH manifest with Widevine is flagged protected', /Widevine/.test(dmf?.protectedReason || ''), JSON.stringify(dmf?.dash));
   check('track files named by a manifest are folded into it', !items.some((i) => i.url.includes('drm/video_480.mp4')));
   const lone = items.find((i) => i.url.endsWith('clip_drm_480.mp4'));
-  check('file named like a DRM track is flagged', !!lone?.protectedReason, JSON.stringify(lone));
+  check('file named like a protected track is flagged', !!lone?.protectedReason, JSON.stringify(lone));
   for (const it of [dmf, lone].filter(Boolean)) {
     const r = await call({ type: 'download', tabId: pageTabId, itemKey: it.key });
-    check(`refuses protected item ${it.url.split('/').pop()}`, /copy-protected/.test(r.error || ''), JSON.stringify(r));
+    check(`refuses protected item ${it.url.split('/').pop()}`, /protected/.test(r.error || ''), JSON.stringify(r));
   }
   const pr = await call({ type: 'download-page', tabId: pageTabId, quality: 'best' });
-  check('refuses whole-page download when the page has protected video', /copy-protected/.test(pr.error || ''), JSON.stringify(pr));
+  check('refuses whole-page download when the page has protected video', /protected/.test(pr.error || ''), JSON.stringify(pr));
   const drm = items.find((i) => i.url.endsWith('drm/index.m3u8'));
-  check('flags the DRM stream as protected', !!drm?.hls?.protected, JSON.stringify(drm?.hls));
+  check('flags the locked stream as protected', !!drm?.hls?.protected, JSON.stringify(drm?.hls));
   if (drm) {
     const r = await call({ type: 'download', tabId: pageTabId, itemKey: drm.key });
-    check('refuses to download the DRM stream', !!r.error && /protected/i.test(r.error), JSON.stringify(r));
+    check('refuses to download the locked stream', !!r.error && /protected/i.test(r.error), JSON.stringify(r));
   }
 
   // update check

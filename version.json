@@ -1,4 +1,4 @@
 {
-  "version": "0.6.1",
-  "notes": "Spots plain HLS playlists served without a .m3u8 ending. Scrambled playlists are still not read."
+  "version": "0.6.2",
+  "notes": "Wording cleanup in the popup messages and readme."
 }

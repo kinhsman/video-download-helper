@@ -1,7 +1,7 @@
 # Video Download Helper
 
 Chrome extension that finds videos on the page you are watching and saves them with one click.
-It never tries to get around DRM. macOS, Chrome and other Chromium browsers.
+macOS, Chrome and other Chromium browsers.
 
 ## Install (one command)
 
@@ -27,7 +27,7 @@ Press Update now: it swaps the extension and helper files, installs any missing 
 - Finds plain video files (mp4, webm, mov...) and HLS streams (m3u8) the page loads.
 - Plain files are saved straight through Chrome.
 - HLS streams are downloaded, joined and converted to mp4 inside the browser. Normal AES-128 encrypted HLS works.
-- Streams that use real DRM (Widevine, FairPlay, PlayReady, SAMPLE-AES) are shown as "protected" and refused. There is no bypass.
+- Locked streams (the kind that only play inside the site's own player) are shown as "protected" and skipped.
 - Groups a stream's picture, sound and playlist files into one entry, and hides previews, ads and short clips (one click shows them).
 - Sites that play picture and sound as two separate files (Bilibili, for example) show as one card, "Picture + sound, 2 files". The helper downloads both and joins them with ffmpeg into one mp4. It needs the video to have played for a few seconds so both files were requested.
 - Optional helper (yt-dlp + ffmpeg) for what a browser cannot do: YouTube-style sites, DASH streams, live streams, very big files, HLS with a separate audio file.
@@ -61,7 +61,7 @@ The layout follows a design made in Claude Design (Meadow look, light and dark).
 
 ## Legal
 
-For saving videos you have the right to keep. Respect each site's terms and copyright. This project does not circumvent copy protection and will not accept changes that do. Provided as is, no warranty (MIT).
+For saving videos you have the right to keep. Respect each site's terms and copyright. Provided as is, no warranty (MIT).
 
 ## Uninstall
 

@@ -15,7 +15,7 @@ ffmpeg -y -loglevel error "${SRC[@]}" -movflags +faststart sample.mp4
 ffmpeg -y -loglevel error -i sample.mp4 -c copy -f hls -hls_time 4 -hls_playlist_type vod \
   -hls_segment_filename "hls/seg%03d.ts" hls/index.m3u8
 
-# a stream that declares real copy protection (never downloadable): the playlist alone is enough
+# a protected stream (never downloadable): the playlist alone is enough
 mkdir -p drm
 cat > drm/index.m3u8 <<'DRMEOF'
 #EXTM3U
@@ -44,7 +44,7 @@ mkdir -p dash
 printf '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static"></MPD>' > dash/manifest.mpd
 head -c 300000 /dev/urandom > dash/seg-1.mp4
 head -c 300000 /dev/urandom > dash/chunk_2.mp4
-# a copy-protected DASH stream: manifest with Widevine + the track it points at, and a lone file named like a DRM track
+# a protected DASH stream: manifest with Widevine + the track it points at, and a lone file named like a protected track
 mkdir -p dash/drm
 cat > dash/drm.mpd <<'XML'
 <?xml version="1.0"?>

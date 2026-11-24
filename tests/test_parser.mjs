@@ -31,7 +31,7 @@ b.ts
 #EXT-X-ENDLIST
 `, B + 'x/index.m3u8');
 check('media: segments, durations, sequence', p.segments.length === 2 && p.duration === 7.5 && p.segments[1].seq === 8);
-check('media: AES-128 key attached and not treated as DRM', p.encrypted && !p.protected && p.segments[0].key.uri === B + 'x/k.key');
+check('media: AES-128 key attached and not treated as protected', p.encrypted && !p.protected && p.segments[0].key.uri === B + 'x/k.key');
 check('media: endlist detected', p.endlist);
 
 p = parsePlaylist(`#EXTM3U
@@ -52,7 +52,7 @@ for (const [label, tag] of [
   ['SAMPLE-AES-CTR', '#EXT-X-KEY:METHOD=SAMPLE-AES-CTR,URI="x"'],
 ]) {
   p = parsePlaylist(`#EXTM3U\n${tag}\n#EXTINF:4,\na.ts\n#EXT-X-ENDLIST\n`, B);
-  check(`DRM flagged: ${label}`, !!p.protected, JSON.stringify(p.protected));
+  check(`protected flagged: ${label}`, !!p.protected, JSON.stringify(p.protected));
 }
 
 check('default IV is the sequence number', ivFromSequence(258).join(',') === '0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,2');

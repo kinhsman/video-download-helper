@@ -348,7 +348,7 @@ function renderNotice() {
   box.replaceChildren();
   if (protectedSite) {
     box.hidden = false;
-    box.append(el('div', { class: 'banner banner--bad' }, el('p', {}, 'The video on this page is copy-protected (DRM). It only plays inside the site\'s own player, so this tool cannot save it, and it will not try to get around that.')));
+    box.append(el('div', { class: 'banner banner--bad' }, el('p', {}, 'The video on this page is protected. It only plays inside the site\'s own player, so this tool cannot save it.')));
     return;
   }
   if (streamSite && helper.state !== 'ok' && helper.state !== 'unknown') {
