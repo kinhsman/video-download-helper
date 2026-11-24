@@ -1,5 +1,5 @@
 // Unit tests for the HLS playlist parser: node tests/test_parser.mjs
-import { parsePlaylist, ivFromSequence, variantLabel } from '../extension/lib/hls.js';
+import { parsePlaylist, ivFromSequence, variantLabel, shouldSniffForPlaylist, looksLikePlaylist } from '../extension/lib/hls.js';
 
 let failed = 0;
 const check = (name, ok, extra = '') => {
@@ -59,6 +59,14 @@ check('default IV is the sequence number', ivFromSequence(258).join(',') === '0,
 let threw = false;
 try { parsePlaylist('<html>nope</html>', B); } catch { threw = true; }
 check('rejects non-playlists', threw);
+
+// Playlists served without a .m3u8 ending: spotted by their first bytes.
+check('sniff: plain-text playlist address is worth checking', shouldSniffForPlaylist('https://a.example.com/embed/9/stream?x=1', 'text/plain; charset=utf-8', 160793));
+check('sniff: no content type and octet-stream are worth checking', shouldSniffForPlaylist('https://a.example.com/p', '') && shouldSniffForPlaylist('https://a.example.com/p', 'application/octet-stream'));
+check('sniff: json, html, scripts, images and chunks are skipped', ['application/json', 'text/html', 'text/javascript', 'image/png'].every((m) => !shouldSniffForPlaylist('https://a.example.com/p', m)) && !shouldSniffForPlaylist('https://a.example.com/app.js', 'text/plain') && !shouldSniffForPlaylist('https://a.example.com/seg1.ts', ''));
+check('sniff: huge responses are skipped', !shouldSniffForPlaylist('https://a.example.com/p', 'text/plain', 50e6));
+check('sniff: recognises a playlist start, with or without BOM', looksLikePlaylist('#EXTM3U\n#EXT-X-VERSION:3') && looksLikePlaylist('\uFEFF#EXTM3U') && looksLikePlaylist('  \n#EXTM3U'));
+check('sniff: scrambled or other text is not a playlist', !looksLikePlaylist('ENC1:abcd') && !looksLikePlaylist('{"a":1}') && !looksLikePlaylist('<html>') && !looksLikePlaylist(''));
 
 console.log(failed ? `\n${failed} failed` : '\nAll parser checks passed');
 process.exit(failed ? 1 : 0);

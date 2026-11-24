@@ -180,3 +180,24 @@ export function hexToBytes(hex) {
   for (let i = 0; i < 16; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
   return out;
 }
+
+// Some sites serve a plain HLS playlist from an address with no .m3u8 ending and a generic content type.
+// These two checks let the extension spot those by looking at the first bytes, without touching anything protected.
+const SNIFF_MIME = new Set(['', 'text/plain', 'application/octet-stream', 'binary/octet-stream']);
+const SKIP_EXT = /\.(js|mjs|css|json|html?|xml|txt|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|ts|m4s|mp4|m4v|webm|mov|mkv|aac|vtt|srt)$/i;
+
+export function shouldSniffForPlaylist(url, mime = '', size = 0) {
+  let path;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return false;
+  }
+  if (SKIP_EXT.test(path)) return false;
+  if (!SNIFF_MIME.has(mime.split(';')[0].trim().toLowerCase())) return false;
+  return !size || size <= 4e6;
+}
+
+export function looksLikePlaylist(text) {
+  return /^﻿?\s*#EXTM3U/.test(text || '');
+}

@@ -1,4 +1,4 @@
-import { parsePlaylist, variantLabel } from './lib/hls.js';
+import { parsePlaylist, variantLabel, shouldSniffForPlaylist, looksLikePlaylist } from './lib/hls.js';
 
 const HELPER_HOST = 'com.sang.video_helper';
 const MIN_FILE_BYTES = 1024 * 1024; // smaller network files are almost always stream chunks, thumbnails or ads
@@ -499,13 +499,39 @@ function updateBadge(tabId) {
   chrome.action.setBadgeBackgroundColor({ tabId, color: '#2563eb' }).catch(() => {});
 }
 
+// A playlist served without a .m3u8 ending or a playlist content type: read the first bytes to see if it is one.
+// Playlists the site scrambles do not start with #EXTM3U and are simply not listed.
+const sniffed = new Map(); // tabId -> addresses already checked
+async function sniffPlaylist(d, mime, size) {
+  const key = hash(d.url.split('#')[0]);
+  let seen = sniffed.get(d.tabId);
+  if (!seen) sniffed.set(d.tabId, (seen = new Set()));
+  if (seen.has(key) || seen.size >= 40) return;
+  seen.add(key);
+  const referer = d.documentUrl || d.initiator || '';
+  try {
+    await ensureRefererRules([hostOf(d.url)], referer);
+    const res = await fetch(d.url, { credentials: 'include', signal: AbortSignal.timeout(10000) });
+    if (!res.ok || !res.body) return;
+    const reader = res.body.getReader();
+    const { value } = await reader.read();
+    reader.cancel().catch(() => {});
+    if (!value || !looksLikePlaylist(new TextDecoder().decode(value.subarray(0, 64)))) return;
+    await addItem(d.tabId, { url: d.url, kind: 'hls', mime, size, referer, source: 'sniff' });
+  } catch {}
+}
+
 chrome.webRequest.onHeadersReceived.addListener(
   (d) => {
     if (d.tabId < 0 || d.statusCode >= 400) return;
     const h = (name) => d.responseHeaders?.find((x) => x.name.toLowerCase() === name)?.value || '';
     const mime = h('content-type');
     const kind = classify(d.url, mime);
-    if (!kind) return;
+    if (!kind) {
+      const len = parseInt(h('content-length'), 10) || 0;
+      if (shouldSniffForPlaylist(d.url, mime, len)) sniffPlaylist(d, mime, len);
+      return;
+    }
     let size = parseInt(h('content-length'), 10) || 0;
     const range = h('content-range').match(/\/(\d+)$/);
     if (range) size = parseInt(range[1], 10);
@@ -533,6 +559,7 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
   if (d.frameId !== 0) return;
   tabPageKey.set(d.tabId, pageKeyOf(d.url));
   await ready;
+  sniffed.delete(d.tabId);
   tabItems.delete(d.tabId);
   tabTracks.delete(d.tabId);
   await persistTab(d.tabId);
@@ -541,6 +568,7 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  sniffed.delete(tabId);
   tabPageKey.delete(tabId);
   tabTracks.delete(tabId);
   chrome.storage.session.remove(`tracks:${tabId}`);
