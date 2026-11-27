@@ -1,4 +1,4 @@
 {
-  "version": "0.6.3",
-  "notes": "Saved HLS files keep the page title instead of a random ID."
+  "version": "0.7.0",
+  "notes": "New Audio only button: save just the sound as MP3 or M4A, for YouTube and other sites."
 }

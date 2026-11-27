@@ -828,6 +828,10 @@ async function startDownload({ tabId, itemKey, variantUrl, quality, cookies, sub
   return startHelper({ url: helperUrlFor(item), referer: item.referer, title, quality: quality || 'best', cookies, itemKey, named: true, subs });
 }
 
+// Sound-only jobs are tied to the video they came from, so one video's result never shows under the next.
+const AUDIO_QUALITIES = ['mp3', 'm4a'];
+const audioKeyOf = (url) => `audio:${hash(pageKeyOf(url))}`;
+
 async function startPageDownload({ tabId, quality, cookies, subs }) {
   const tab = await chrome.tabs.get(tabId);
   if (!isHttp(tab.url)) throw new Error('This page cannot be downloaded.');
@@ -836,7 +840,8 @@ async function startPageDownload({ tabId, quality, cookies, subs }) {
   if (locked) throw new Error(`The video on this page is protected (${locked}). It cannot be downloaded.`);
   const hs = await helperState();
   if (hs.state !== 'ok') throw new Error('The helper app is not set up.');
-  return startHelper({ url: tab.url, referer: tab.url, title: tab.title, quality: quality || 'best', cookies, itemKey: 'page', subs });
+  const itemKey = AUDIO_QUALITIES.includes(quality) ? audioKeyOf(tab.url) : 'page';
+  return startHelper({ url: tab.url, referer: tab.url, title: tab.title, quality: quality || 'best', cookies, itemKey, subs });
 }
 
 async function cancelJob(id) {
@@ -921,13 +926,15 @@ async function handle(msg, sender) {
 
     // from popup
     case 'list': {
+      let url = '';
       try {
-        tabPageKey.set(msg.tabId, pageKeyOf((await chrome.tabs.get(msg.tabId)).url));
+        url = (await chrome.tabs.get(msg.tabId)).url;
+        tabPageKey.set(msg.tabId, pageKeyOf(url));
       } catch {}
       const items = annotate(visibleItems(msg.tabId));
       const main = items.filter((it) => !it.minor);
       // Sites that stream with DASH keep picture and sound in separate files.
-      return { items, streamSite: main.some((it) => it.needsHelper && it.kind !== 'tracks'), protectedSite: main.some((it) => it.protectedReason) };
+      return { items, streamSite: main.some((it) => it.needsHelper && it.kind !== 'tracks'), protectedSite: main.some((it) => it.protectedReason), audioKey: audioKeyOf(url), webPage: isHttp(url) };
     }
     case 'helper-state':
       return helperState();

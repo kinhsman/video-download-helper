@@ -31,6 +31,7 @@ Press Update now: it swaps the extension and helper files, installs any missing 
 - Groups a stream's picture, sound and playlist files into one entry, and hides previews, ads and short clips (one click shows them).
 - Sites that play picture and sound as two separate files (Bilibili, for example) show as one card, "Picture + sound, 2 files". The helper downloads both and joins them with ffmpeg into one mp4. It needs the video to have played for a few seconds so both files were requested.
 - Optional helper (yt-dlp + ffmpeg) for what a browser cannot do: YouTube-style sites, DASH streams, live streams, very big files, HLS with a separate audio file.
+- Audio only for YouTube and other yt-dlp sites (needs the helper): save just the sound as MP3 (plays everywhere) or M4A (the site's own audio when it offers it). Files end in `(audio)`, so they never replace a saved video.
 - Subtitles for YouTube and other yt-dlp sites (needs the helper): save them as `.srt` files, put them inside the video, or download subtitles only. Pick languages by code, for example `en,vi,th`. Auto-generated captions are included.
 - YouTube needs a JavaScript runtime for yt-dlp. The installer adds deno if you have neither deno nor node.
 - Files land in `Downloads/VideoHelper/`. Each finished download has a Show in folder link.
@@ -46,7 +47,8 @@ The layout follows a design made in Claude Design (Meadow look, light and dark).
 2. Click the toolbar icon. Videos found on the tab are listed with type, size and quality.
 3. Press Download. Progress shows under Downloads in the popup.
 4. Nothing found? Press Force detect.
-5. With the helper enabled, "Whole page (yt-dlp)" downloads the page's video even when the extension could not see the file.
+5. Only want the sound? With the helper enabled, pick MP3 or M4A in the Audio only row and press its Download button.
+   "Whole page (yt-dlp)" downloads the page's video even when the extension could not see the file.
    "Use my Chrome login" passes your Chrome cookies to yt-dlp (macOS will ask for Keychain access). While Chrome is open it often locks its cookie file; the helper then carries on without the login and says so.
 6. Subtitles: pick an option under Whole page and type language codes (`en,vi`). "Subtitles only" saves just the `.srt` files.
 

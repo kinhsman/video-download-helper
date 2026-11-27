@@ -83,6 +83,35 @@ for n, expect in ((1, "VDH Test Clip.mp4"), (2, "VDH Test Clip (2).mp4")):
     if r and r[-1]["type"] == "done":
         made.append(Path(r[-1]["path"]))
 
+# --- sound only. sample.mp4 is one combined file, the case where a shared name would cost the saved video
+ffprobe = shutil.which("ffprobe") or str(Path.home() / ".local" / "bin" / "ffprobe")
+
+
+def streams(path):
+    """What is inside a file, as ["audio:mp3", ...]."""
+    out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "stream=codec_type,codec_name:stream_disposition=attached_pic", "-of", "json", str(path)], capture_output=True, text=True).stdout
+    return sorted(f"{s['codec_type']}:{s['codec_name']}" for s in json.loads(out or "{}").get("streams", []))
+
+
+video = Path.home() / "Downloads" / "VideoHelper" / "sample [sample].mp4"
+for quality, ext, codec in (("mp3", "mp3", "mp3"), ("m4a", "m4a", "aac"), ("audio", "m4a", "aac")):
+    for turn in ("first", "second"):
+        r = talk({"cmd": "download", "id": f"a-{quality}", "url": "http://localhost:8791/sample.mp4", "quality": quality})
+        saved = Path(r[-1]["path"]) if r and r[-1]["type"] == "done" else None
+        ok = bool(saved) and saved.exists() and saved.name == f"sample [sample] (audio).{ext}"
+        check(f"{quality}, {turn} save: writes sample [sample] (audio).{ext}", ok, r[-3:] if r else r)
+        if ok:
+            check(f"{quality}, {turn} save: holds {codec} sound and no picture", streams(saved) == [f"audio:{codec}"], streams(saved))
+        check(f"{quality}, {turn} save: the saved video is untouched", video.exists() and streams(video) == ["audio:aac", "video:h264"])
+    if saved:
+        saved.unlink(missing_ok=True)
+
+r = talk({"cmd": "download", "id": "an", "url": "http://127.0.0.1:8791/sample.mp4", "quality": "mp3", "title": "VDH Test Clip", "named": True})
+named_audio = Path(r[-1]["path"]) if r and r[-1]["type"] == "done" else None
+check("a named sound download keeps the (audio) ending", bool(named_audio) and named_audio.name == "VDH Test Clip (audio).mp3", r[-3:] if r else r)
+if named_audio:
+    made.append(named_audio)
+
 r = talk({"cmd": "reveal", "path": "/etc/hosts"})
 check("reveal refuses files outside the VideoHelper folder", r and r[-1]["type"] == "error", r)
 r = talk({"cmd": "reveal", "path": str(Path.home() / "Downloads" / "VideoHelper" / "nope.mp4")})
@@ -92,7 +121,6 @@ check("reveal reports a missing file", r and r[-1]["type"] == "error" and "moved
 r = talk({"cmd": "merge_tracks", "id": "m1", "video_url": "http://127.0.0.1:8791/tracks/video.m4s", "audio_url": "http://127.0.0.1:8791/tracks/audio.m4s", "referer": "http://127.0.0.1:8791/tracks.html", "title": "VDH Merge Test", "sizes": [2000000, 170000]})
 joined = Path(r[-1]["path"]) if r and r[-1]["type"] == "done" else None
 check("merge_tracks joins picture and sound into one mp4", bool(joined) and joined.exists() and joined.name == "VDH Merge Test.mp4", r[-3:] if r else r)
-ffprobe = shutil.which("ffprobe") or str(Path.home() / ".local" / "bin" / "ffprobe")
 if joined and joined.exists():
     out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(joined)], capture_output=True, text=True).stdout.split()
     check("the joined file has both a picture and a sound stream", sorted(out) == ["audio", "video"], out)

@@ -348,6 +348,45 @@ try {
   }
   check('download progress shows inside the unit, with no separate row on the This page tab', inl.inline && !inl.duplicateRow, JSON.stringify(inl));
 
+  // sound only: the row under the recommended card, driven by its own menu and button
+  await evalIn(cdp, popupId, `chrome.storage.local.set({ prefs: { quality: 'audio' } })`);
+  const { targetId: audId } = await cdp.send('Target.createTarget', { url: `chrome-extension://${EXT_ID}/popup.html?tab=${plainTabId}` });
+  await sleep(2500);
+  const row = await evalIn(cdp, audId, `({ text: document.querySelector('.unit.audio')?.innerText || '', format: document.querySelector('.unit.audio select')?.value, quality: document.getElementById('page-quality').value, old: !!document.querySelector('#page-quality option[value=audio]') })`);
+  check('an Audio only row is offered, starting on MP3', /Audio only/.test(row.text) && row.format === 'mp3', JSON.stringify(row));
+  check('an old "Audio only" quality choice is moved back to Best, so video buttons give video', row.quality === 'best' && !row.old, JSON.stringify(row));
+  for (const [format, codec] of [['mp3', 'mp3'], ['m4a', 'aac']]) {
+    const { jobs: before = [] } = await evalIn(cdp, popupId, `chrome.storage.session.get('jobs')`);
+    await evalIn(cdp, audId, `(() => { const s = document.querySelector('.unit.audio select'); s.value = '${format}'; s.dispatchEvent(new Event('change')); document.querySelector('.unit.audio .mw-btn').click(); })()`);
+    let started;
+    for (let i = 0; i < 20 && !started; i++) {
+      await sleep(250);
+      const { jobs = [] } = await evalIn(cdp, popupId, `chrome.storage.session.get('jobs')`);
+      started = jobs.find((j) => !before.some((b) => b.id === j.id));
+    }
+    const done = started && (await waitJob(started.id));
+    check(`${format}: the button saves a sound file`, done?.status === 'done' && done.filename?.endsWith(`(audio).${format}`), JSON.stringify(done));
+    await sleep(500);
+    const shown = await evalIn(cdp, audId, `({ row: document.querySelector('.unit.audio .job-inline')?.innerText || '', video: document.querySelector('.unit.rec .job-inline')?.innerText || '' })`);
+    check(`${format}: the result shows in the Audio only row, not under the video card`, shown.row.includes(`(audio).${format}`) && !shown.video.includes('(audio)'), JSON.stringify(shown));
+    if (done?.filename) {
+      const info = probe(done.filename);
+      const kinds = (info?.streams || []).map((s) => `${s.codec_type}:${s.codec_name}`).join(',');
+      check(`${format}: the file holds only ${codec} sound`, kinds === `audio:${codec}` && parseFloat(info?.format?.duration) > 18, JSON.stringify(info));
+    }
+  }
+  const kept = await evalIn(cdp, popupId, `chrome.storage.local.get('prefs').then(r => r.prefs.audioFormat)`);
+  check('the chosen sound format is remembered', kept === 'm4a', JSON.stringify(kept));
+  if (process.env.SHOT3) {
+    const { sessionId: ss3 } = await cdp.send('Target.attachToTarget', { targetId: audId, flatten: true });
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 380, height: 640, deviceScaleFactor: 2, mobile: false }, ss3);
+    if (process.env.SHOT3_SCHEME) await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: process.env.SHOT3_SCHEME }] }, ss3);
+    await sleep(300);
+    const shot3 = await cdp.send('Page.captureScreenshot', { format: 'png' }, ss3);
+    writeFileSync(process.env.SHOT3, Buffer.from(shot3.data, 'base64'));
+  }
+  await evalIn(cdp, popupId, `chrome.storage.local.get('prefs').then(r => chrome.storage.local.set({ prefs: { ...r.prefs, audioFormat: 'mp3', quality: 'best' } }))`);
+
   const { job: pj, error: pe } = await call({ type: 'download-page', tabId: plainTabId, quality: '720' });
   check('whole-page download starts via helper', !!pj, pe);
   if (pj) {

@@ -83,9 +83,11 @@ let helper = { state: 'unknown' };
 let items = [];
 let jobs = [];
 let history = [];
-let prefs = { quality: 'best', cookies: false, subMode: 'off', subLangs: 'en' };
+let prefs = { quality: 'best', audioFormat: 'mp3', cookies: false, subMode: 'off', subLangs: 'en' };
 let streamSite = false;
 let protectedSite = false;
+let audioKey = 'audio'; // which video the sound-only row belongs to
+let webPage = false;
 let showMinor = false;
 let update = null;
 let repoCfg = { repo: '', branch: 'main' };
@@ -107,6 +109,11 @@ const shellName = () => (isWindows ? 'PowerShell' : 'Terminal');
 async function loadPrefs() {
   const { prefs: p } = await chrome.storage.local.get('prefs');
   prefs = { ...prefs, ...p };
+  // "Audio only" used to sit in the quality menu, which also turned the video buttons into sound downloads.
+  if (prefs.quality === 'audio') {
+    prefs.quality = 'best';
+    savePrefs();
+  }
   $('page-quality').value = prefs.quality;
   $('cookies').checked = prefs.cookies;
   $('sub-mode').value = prefs.subMode;
@@ -329,10 +336,52 @@ function pageUnit() {
   );
 }
 
-async function startPageDownload(noteEl) {
+// Just the sound of this page's video, as MP3 or M4A. Needs the helper.
+function audioUnit() {
+  const ref = { running: false, jobId: null };
+  const note = el('div', { class: 'note', hidden: true });
+  const select = el('select', { 'aria-label': 'Audio format' },
+    el('option', { value: 'mp3' }, 'MP3 · plays everywhere'),
+    el('option', { value: 'm4a' }, 'M4A · original quality, when offered'),
+  );
+  select.value = prefs.audioFormat;
+  select.addEventListener('change', () => {
+    prefs.audioFormat = select.value;
+    savePrefs();
+  });
+  const btn = el('button', {
+    class: 'mw-btn mw-btn--secondary mw-btn--sm',
+    type: 'button',
+    onclick: async () => {
+      btn.disabled = true;
+      await startPageDownload(note, { quality: select.value, subs: null });
+      btn.disabled = false;
+    },
+  }, 'Download');
+  const cancel = el('button', { class: 'mw-iconbtn', type: 'button', title: 'Cancel', 'aria-label': 'Cancel', hidden: true, onclick: () => ref.jobId && ask({ type: 'cancel', jobId: ref.jobId }) }, icon('x'));
+  const slot = el('div', { class: 'job-slot' });
+  ref.refresh = () => {
+    btn.hidden = ref.running;
+    cancel.hidden = !ref.running;
+    select.disabled = ref.running;
+  };
+  Object.assign(ref, { slot, btn, cancel, note });
+  unitRefs.set(audioKey, ref);
+  return el('div', { class: 'unit line audio' },
+    el('div', { class: 'unit-head' },
+      el('div', { class: 'unit-text' }, el('div', { class: 'unit-label' }, 'Audio only'), el('div', { class: 'unit-meta' }, 'Just the sound, no picture')),
+      el('div', { class: 'unit-actions' }, btn, cancel),
+    ),
+    el('div', { class: 'unit-quality' }, select),
+    note,
+    slot,
+  );
+}
+
+async function startPageDownload(noteEl, { quality = prefs.quality, subs = subsPayload() } = {}) {
   if (noteEl) noteEl.hidden = true;
   try {
-    await ask({ type: 'download-page', tabId, quality: prefs.quality, cookies: prefs.cookies, subs: subsPayload() });
+    await ask({ type: 'download-page', tabId, quality, cookies: prefs.cookies, subs });
   } catch (err) {
     if (noteEl) {
       noteEl.textContent = err.message;
@@ -397,6 +446,8 @@ function renderItems() {
     box.append(el('div', { class: 'eyebrow' }, 'Recommended'));
     box.append(pick ? unit(pick, { rec: true }) : pageUnit());
   }
+
+  if (helper.state === 'ok' && webPage && !protectedSite) box.append(el('div', {}, audioUnit()));
 
   if (rest.length) {
     box.append(el('div', { class: 'eyebrow' }, 'Other downloads', streamSite && rest.some((it) => it.kind === 'file')
@@ -671,7 +722,7 @@ async function checkForUpdates(e) {
 // ---------- data refresh ----------
 
 async function refreshItems() {
-  ({ items, streamSite, protectedSite } = await ask({ type: 'list', tabId }));
+  ({ items, streamSite, protectedSite, audioKey, webPage } = await ask({ type: 'list', tabId }));
   renderNotice();
   renderItems();
 }

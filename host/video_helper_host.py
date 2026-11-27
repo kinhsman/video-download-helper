@@ -40,8 +40,15 @@ FORMATS = {
     "best": ["-f", "bv*+ba/b"],
     "1080": ["-f", "bv*[height<=1080]+ba/b[height<=1080]/b"],
     "720": ["-f", "bv*[height<=720]+ba/b[height<=720]/b"],
-    "audio": ["-f", "ba[ext=m4a]/ba/b", "-x", "--audio-format", "m4a"],
+    # Sound only. MP3 is converted at the best variable bitrate; M4A takes the site's own AAC track when it has one.
+    "mp3": ["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0", "--embed-metadata"],
+    "m4a": ["-f", "ba[ext=m4a]/ba/b", "-x", "--audio-format", "m4a", "--embed-metadata"],
 }
+FORMATS["audio"] = FORMATS["m4a"]  # the name older copies of the extension send
+AUDIO_QUALITIES = {"mp3", "m4a", "audio"}
+# A sound download must never share a name with the video: when a site has only one combined file, yt-dlp
+# would find the saved video, pull the sound out of it and delete it.
+AUDIO_SUFFIX = " (audio)"
 
 IS_WINDOWS = sys.platform == "win32"
 # Keep helper tools from flashing a console window on Windows.
@@ -130,11 +137,12 @@ def safe_name(title):
     return s[:100].strip()
 
 
-def unique_base(title):
+def unique_base(title, suffix=""):
     """A file name stem from the page title that does not collide with anything already saved."""
     base = safe_name(title)
     if not base:
         return None
+    base += suffix
     stem, n = base, 1
     while any(OUT_DIR.glob(glob_escape(stem) + ".*")):
         n += 1
@@ -148,11 +156,12 @@ def glob_escape(text):
 
 def output_template(req):
     # Stream links (not page links) carry no useful title of their own, so name them after the page.
+    suffix = AUDIO_SUFFIX if req.get("quality") in AUDIO_QUALITIES else ""
     if req.get("named"):
-        stem = unique_base(req.get("title", ""))
+        stem = unique_base(req.get("title", ""), suffix)
         if stem:
             return str(OUT_DIR / (stem.replace("%", "%%") + ".%(ext)s"))
-    return str(OUT_DIR / "%(title).150B [%(id)s].%(ext)s")
+    return str(OUT_DIR / f"%(title).150B [%(id)s]{suffix}.%(ext)s")
 
 
 SUB_MODES = {"off", "file", "embed", "only"}
@@ -265,6 +274,8 @@ class Download:
                     res["error"] = line
                 elif "has already been downloaded" in line:
                     res["existed"] = True
+                elif line.startswith("[ExtractAudio]"):
+                    send({"type": "progress", "id": self.id, "percent": None, "note": "Saving the sound"})
                 else:
                     sub = SUB_LINE.search(line)
                     if sub:
